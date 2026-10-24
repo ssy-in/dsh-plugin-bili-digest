@@ -1,0 +1,5 @@
+# dsh bundle patch：把本插件插入 profile 的 loader 层栈。
+# 只声明一行；配置写在 DSH 设置 → 插件列表里（会回写到 profile 的 cordis.patch.yml）。
+- insert:
+    - id: bili-digest
+      name: 'dsh-plugin-bili-digest'

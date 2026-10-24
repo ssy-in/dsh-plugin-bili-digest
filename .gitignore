@@ -1,0 +1,16 @@
+node_modules/
+cache/
+reports/
+.bili/
+*.local.json
+bili.config.local.json
+.tmp/
+*.log
+
+# 本地实验脚本与打包产物
+lab/
+*.tgz
+.tmp-home/
+.tmp-mood/
+diary/
+.home/

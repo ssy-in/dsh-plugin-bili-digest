@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Syntax check
+        run: |
+          for file in lib/core/*.js lib/index.js bin/bili-digest.js client/client.js; do
+            node --check "$file"
+          done
+      - name: Unit tests
+        run: |
+          node scripts/prepare-test.mjs
+          node test/core.test.js
+          node test/frames.test.js
+          node test/mood.test.js
+          node test/tone.test.js
+          node test/write.test.js
+          node test/inbox.test.js
+          node test/plugin.test.js
+          node test/client.test.js
+      - name: JSON and YAML sanity
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json ok')"
+          node -e "const fs=require('fs');const t=fs.readFileSync('cordis.patch.yml','utf8');if(!t.includes('bili-digest'))process.exit(1);console.log('cordis.patch.yml ok')"

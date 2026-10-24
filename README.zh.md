@@ -1,0 +1,245 @@
+# B 站字幕速览 · dsh-plugin-bili-digest
+
+> 有字幕的，只把最关键的几段交给模型；没有字幕的，改成看画面。
+
+一个 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）插件，也可以脱离 DSH 当命令行工具用。
+它把 B 站视频变成一份带时间戳跳转的「速览」：先做一次便宜的硬门槛检查，没有字幕的视频不再直接丢弃，而是改用 B 站分镜截图（每帧约 170 token，不需要 ffmpeg、不下载视频）；有字幕的按语义切段、打分，只保留信息密度最高的若干段。
+
+## 为什么
+
+一条 1 小时的视频，字幕全文 2–4 万 token；直接塞给模型既贵又吵。这里做的是：
+
+| 场景 | 成本 |
+| --- | --- |
+| 判断一条视频有没有字幕（放弃它或继续） | 约 94 ms、约 2 KB，0 token |
+| 一条 17 分钟视频的字幕 | 4915 字 → 1290 字（省 74%） |
+| 一条 8 分钟视频的字幕 | 1841 字 → 532 字（省 71%） |
+| 一轮 3 个关键词、20 条候选 | 3024 字 → 1616 字（≈1164 token） |
+| 没有字幕的视频：看画面 | 每帧约 170 token（480×270）；默认 6–20 帧，≈1k–3.4k token |
+
+> 真实数据来自本仓库作者在 2026-10 的实测（`node bin/bili-digest.js run --kw ...` 的输出）。
+
+## 它做什么
+
+```
+搜索（wbi 签名） → 硬门槛：view + 字幕清单
+                     ↘ 有字幕：拉字幕 → 切段 → 打分 → 选 top-K → Markdown 速览
+                     ↘ 没字幕：抓分镜图 → 挑帧 → 裁格 → 编码 → 图片帧（可指定时间点）
+```
+
+- **硬门槛**：`x/web-interface/view` 拿 `cid`，`x/player/wbi/v2` 拿字幕清单。没有字幕轨 → 走画面通路；字幕字数/分钟低于门槛（默认 60）→ 判定「字幕残缺」，同样走画面通路（例如 143 分钟的视频只有 177 字字幕）。
+- **切段**：相邻字幕按间隔/字数/时长/句末合并成 15–30 秒的语义段，长句按标点等比切分。
+- **打分**：关键词命中 ×2、结论词（所以/因此/意味着/风险/成本…）×1、数字密度、语速密度、首尾位置加成。
+- **选段**：贪心 + 相邻 ±2 段降权 + 3-gram 去重，段数按时长自动 4–14 段，单视频入模字数封顶 3600。
+- **看画面**：`x/player/videoshot` 拿分镜拼图（10×10 网格、单格 480×270），按需裁剪并编码成 JPEG，直接作为图片交给模型；也可以给时间点定点取帧（核对某句话对应的画面）。
+- **可回查**：速览里每一段都有 `?t=秒` 跳转；想看原文用 `bili_recall`（或 `bili-digest recall BV … 起 止`）。
+
+## 安装
+
+### 1. 作为 DSH 插件（推荐）
+
+```bash
+# 在插件市场里搜索 bili-digest，或从本地 tgz 安装
+npm pack                      # 生成 dsh-plugin-bili-digest-0.1.0.tgz
+```
+
+装好后在「设置 → 插件 → B 站字幕速览」里填一次 `SESSDATA`，点「开始一轮」。
+
+### 2. 作为命令行工具
+
+```bash
+node bin/bili-digest.js login --sessdata "你的 SESSDATA"
+node bin/bili-digest.js run --kw deepseek,千星奇域 --days 7 --limit 12
+node bin/bili-digest.js read BV1Fdna6mE9W --frames 4
+node bin/bili-digest.js frames BV1Fdna6mE9W --count 8      # 也可以 --at 12,95,400 定点取帧
+node bin/bili-digest.js recall BV1Fdna6mE9W 120 300
+node bin/bili-digest.js mood "今天有点累，想看轻松的" --limit 20   # 双份 markdown
+node bin/bili-digest.js presets                                   # 五个心情档位
+node bin/bili-digest.js status
+```
+
+只有 Node ≥ 18.17（用全局 `fetch`）。抓帧额外用 `jpeg-js`（纯 JS，无原生编译）；没有它时除「看画面」之外的功能照常工作。
+
+## 配置 SESSDATA
+
+**必须有登录态**：匿名访问时 B 站不返回字幕清单（`need_login_subtitle: true`），本插件会把所有视频判成"没字幕"。实测匿名 10/10 拿不到字幕清单，登录后 34 条里 18 条有字幕。
+
+- 浏览器登录 bilibili.com → 开发者工具 → Application → Cookies → 复制 `SESSDATA` 的值。
+- 插件界面里粘贴（只写不读，保存到权限 0600 的私有文件）；或环境变量 `BILI_SESSDATA`；或 `bili-digest login --sessdata …`。
+- 位置：`$DSH_HOME/bili-digest/config.json`（默认 `~/.dsh/bili-digest/config.json`），可用 `BILI_DIGEST_HOME` / `BILI_DIGEST_CONFIG` 覆盖。**不会**写进仓库或 profile 配置。
+
+## 模型侧工具
+
+| 工具 | 作用 |
+| --- | --- |
+| `bili_digest` | 关键词 → 速览（多关键词、按天数过滤、自动丢弃无字幕视频并提示可以看画面） |
+| `bili_read` | 单条 BV 号 → 速览；没有字幕时自动改用分镜截图（可用 `frames` 指定帧数） |
+| `bili_frames` | 抓画面截图：`count` 均匀取样，或 `seconds` 定点取帧（核对某句话对应的画面） |
+| `bili_mood` | 按心情刷一轮：一句话或档位 → 双份 markdown（心情日记 + 速览报告） |
+| `bili_recall` | 按时间段回查原始字幕 |
+
+`bili_digest` / `bili_recall` 只返回压缩后的纯文本，不会把整份字幕塞进上下文；`bili_read` / `bili_frames` 返回的是图片帧（每帧约 170 token）。
+
+## 看画面（没有字幕时）
+
+字幕不是万能的：大量小 UP 主的视频没有 ai 字幕轨，界面演示、操作流程、图表这类内容也不适合用文字复述。所以没字幕时改用 **B 站分镜图**：
+
+- 数据来源 `x/player/videoshot`（**不需要 wbi 签名、不需要登录、不需要 ffmpeg、不下载视频**）：一张 10×10 拼图 + 一组时间戳，单格 480×270。
+- 我们只裁出需要的那几格，重新编码成独立 JPEG（单帧 28–37 KB），**分帧返回**而不是拼成一张大图——拼图会被宿主降采样，细节更差。
+- 默认帧数按时长：<3 分钟 6 帧、3–15 分钟 12 帧、15–45 分钟 16 帧、>45 分钟 20 帧，单次上限 24 帧；定点核对时 1–4 帧就够。
+- 在插件界面里，每条被丢弃的视频都有「没有字幕，看画面」按钮，可直接预览截图并点开对应时刻。
+
+## 按心情刷（心情日记）
+
+不是「每天定时刷」，而是**想刷的时候按当天的心情刷一轮**，产出成对的 markdown 都放在同一个目录（默认 `我看视频/`，界面里可改），文件名以「年月日_BV_」开头，一眼能对上看了哪条：
+
+- `20261024_BV1xx_diary.md` —— **给自己看的心情日记**：当时说了什么、听出的心情与档位、为什么给你找这些、这条的看点/金句、`## 情绪脉络`（用这条自己的几个钩子走起/承/转/收）、今天没看的、以及留白（`我记一笔` / `下次想刷什么`）。
+- `20261024_BV1xx_dailyReport.md` —— **给模型读的日报**：结构化段落 + `?t=` 时间戳跳转。
+- 截图放同目录的 `画面/<BV>/`；一轮读几条就有几对文件（默认一轮 1 条 = 一对）。
+
+用法：
+
+```bash
+bili-digest mood "今天有点累，就想看点轻松的，别太费脑子"
+bili-digest mood --preset learn --limit 20
+bili-digest presets            # 看五个档位的默认关键词
+```
+
+档位：`relax` 想放松一下 / `learn` 想学点东西 / `rant` 想听人吐槽 / `hype` 想激动一下 / `random` 随便看看；也可以只写一句话不选档位，或者档位 + 一句话叠加（显式写的「关键词：xxx」优先于档位默认词）。插件界面里是一排档位按钮加一个自由输入框。
+
+两个提高命中率的细节：- **多关键词分摊配额**：5 个关键词不会让第一个词吃满候选，而是每个词各取一部分，方向更散。
+- **跳过短视频**：默认只挑 3 分钟以上的视频（`minDuration`，可改），因为短视频几乎不会有 AI 字幕轨。
+
+慢节奏（一小时看一条）：
+
+- `--videos 1`（默认就是 1）：一轮最多只往日记里放一条视频，其余留给下一次；`--videos 0` 表示不限。
+- 界面里把「自动刷间隔」填 `60`，宿主开着的时候就会每小时自己刷一轮、写一篇日记（`0` 关闭）；「自动刷时的心情」决定没写心情时用哪句话去刷。
+- 想手动来一轮，点「按心情刷一轮」即可，两条路径写同一套文件。
+
+## 收藏夹与「@ 人类」
+
+读完一条视频后可以顺手做两件写操作（默认关闭，需要 `bili_jct`）：把视频收藏进对应收藏夹，并在视频下发一条「今天心情 + 为什么想发给人类看看 + 一句话总结」的评论 @ 人类。**每天最多 3 条**，用完就等到明天。
+
+五个收藏夹按角色对应（标题对不上时会提示你去建一个同名收藏夹）：
+
+| 角色 | 默认标题 | 什么时候用它 |
+| --- | --- | --- |
+| `mood` | 我喜欢的视频 | 和当时心情对得上、有意思的 |
+| `deepseek` | 关于我的的视频 | deepseek 相关的学习和有趣的 |
+| `liked` | 人类主人喜欢的视频 | 人类点头之后才算数 |
+| `misc` | 默认收藏夹 | 没归类过的其他 |
+| `reject` | 我不喜欢的视频 | 宣扬不良价值观/金钱观、引战骂人的；**只归档，不 @、不进日记** |
+
+### 什么样的内容会被判进「我不喜欢的视频」
+
+读之前先过一道价值观门槛（`lib/core/tone.js`），两个判据任一成立就丢掉：
+
+1. **话术**：标题/简介/tags 里出现两处以上「割韭菜、毒鸡汤、智商税、带节奏、拉踩、引战、地域黑、鄙视链…」这类引导性说法；
+2. **氛围**：抓评论区 top 回复做样本，骂人词密度 ≥3 条/百条（样本少于 20 条时不下这个判断，避免冤枉冷门视频）。
+
+被判定之后：收藏进 `reject` 夹、不 @ 人类、不进日记、不交给模型，只在速览末尾提一句「另有 N 条内容和价值观不合，已静默归档」。没配 `bili_jct` 时这一步自动跳过（不写任何东西）。
+
+> 弹幕接口（`dm/list.so`、`dm/seg.so`）现在一个返回空 XML、一个返回 protobuf 配置块，拿不到稳定文本，所以氛围信号用的是评论区。
+
+```bash
+bili-digest login --sessdata <SESSDATA> --jct <bili_jct>   # bili_jct 才解锁写操作
+bili-digest folders                                        # 看看五个角色对不对得上
+bili-digest push BV1xxxxxxxxx --at-name 昵称 --at-mid 12345 --dry   # 先看评论草稿
+bili-digest push BV1xxxxxxxxx --at-name 昵称 --at-mid 12345         # 收藏 + @
+```
+
+写操作的护栏：单条评论不重试（重放会变重复评论）、每天 3 条硬上限、`--dry` 可以先看草稿、评论正文上限 900 字、失败只记日志不反复重试。
+
+## 消息中心：有人回复就聊一句
+
+插件会去消息中心（`/x/msgfeed/reply`、`/x/msgfeed/at`）看有没有人回复我、@ 我。**是我（人类）回复的就再回一句聊天的话，别人回复的也回一句**，都只有一句、不带 @。
+
+护栏（写在 `lib/core/inbox.js` 的 `LIMITS` 里，改代码才能变）：
+
+- 同一个人一天只回一次；
+- 每小时最多 10 次、每天最多 50 次；
+- 从新到旧处理，超配额的留给下一轮；
+- 缺 `bili_jct` 时只出草稿、不发；子回复带 `root`/`parent`，失败不重试。
+
+```bash
+bili-digest inbox                # 看草稿：该回谁、回什么
+bili-digest inbox --send         # 真发（按配额）
+bili-digest review               # 我拿不准归属的、等人类复盘的话
+```
+
+**拿不准就先不动。** 人类说的话里如果我没法确定它指哪条视频、该进哪个收藏夹，我不会去动收藏夹，而是把「他的原话 + 我的不确定」追加到当天 `*_dailyReport.md` 的「## 人类说的，我拿不准」小节，同时记进 `cache/review.json`，等他复盘对错。
+
+## 安全与隐私
+
+- **只连白名单域名**：`*.bilibili.com`、`*.hdslb.com`、`*.bilivideo.com`、`*.biliapi.net`，仅 https，带超时、重试、响应体上限，避免被字幕地址诱导去打内网（SSRF）。
+- **SESSDATA 只写不读**：界面与接口都不回显；校验字符集，拒绝 `;`/换行（防止 cookie 头注入）；文件权限 0600。
+- **本地接口只接受同源请求**：检查 `Sec-Fetch-Site` / `Origin`，写操作还要求自定义头 `x-bili-digest: 1`（跨站表单无法携带），不返回任何 CORS 头。
+- **全局限速**：请求间最小间隔 260 ms + 抖动，避免触发 B 站风控。
+- **硬性小时预算**：滚动一小时最多 120 次出站请求，用满就直接失败（不重试、不硬顶）；单轮候选条数上限 30。遇到 412/429 立即停止本轮。
+- **报告转义**：标题/字幕里的 Markdown 结构字符、控制字符都会被转义，防止报告被注入伪造链接。
+- **写操作只有两种，且都要 `bili_jct`**：收藏进收藏夹、发评论（@ 人类 / 回一句聊天）。默认关闭，额度分别是每天 3 条与每天 50 条；不点赞、不投币、不关注、不私信。
+
+## 已知限制
+
+- B 站字幕几乎都是 `ai-zh`（UP 主很少传人工字幕），同音错字多；速览保留原文，不强行纠错。
+- 分镜图的时间粒度是 5 秒一格（长视频更粗），而且只有 B 站生成了分镜的视频才有；极新的视频可能还没有分镜，此时会明确返回「没有抓到画面」。
+- 分镜单元格固定 480×270，看不清很小的字（例如 1080p 界面里的 12px 文本）；需要精读细节时请点 `?t=` 打开原视频。
+- 单张分镜图解码后约 52 MB 内存，进程里最多缓存 2 张；批量抓多个视频时会反复解码（每张约 0.7 s）。
+- 多 P 视频默认只读第 1 P（可用 `page` 参数指定）。
+- 付费/充电专属视频、需要登录的私享视频可能取不到字幕，会被计入丢弃。
+- 字幕密度门槛是启发式的：语速极慢但有字幕的视频可能被误判。
+- **SESSDATA 会过期**：一旦失效（接口返回 `-101 账号未登录`），匿名态下 B 站不下发字幕清单，几乎读不到任何视频——此时速览首行会直接提示「SESSDATA 缺失或已失效」，更新 cookie 即可。
+- 心情模式的命中率受 B 站字幕覆盖影响：娱乐/短视频类关键词经常整批没字幕，此时日记会是「今天没有读进去任何一条」，这是数据侧的现状，不是解析 bug（想要内容可以对这些 BV 用 `bili_frames`）。
+
+## 实机验证
+
+- 在 DSH 0.2.1-rc.2 真实宿主中以插件方式加载成功（`dsh --profile <克隆 profile> web`）：客户端 bundle 被 `__DSH_BOOT__` 收录并由 `plugins/??dsh-plugin-bili-digest/client.js` 提供（13 KB，语法校验通过）。
+- 端到端跑一轮（关键词 deepseek，候选 4 条）：3 条可读、1 条因无字幕被丢弃；字幕 1932 字 → 入模 1064 字（省 45%），耗时 3.35 s；报告写入 `<DSH_HOME>/bili-digest/reports/`。
+- 本地接口守门实测：POST 缺少 `x-bili-digest` 头 → 403；外来 `Origin` → 403；未知子路径 → 404；设置在 `<DSH_HOME>/bili-digest/config.json` 落盘。
+- 抓帧实测（真实网络）：`BV1Fdna6mE9W`（5:30）分镜 10×10、单格 480×270，抓 6 帧 2.3 s、每帧 22–37 KB；`bili-digest read BV1Fdna6mE9W --frames 2` 取到的帧正好落在被引用片段的起点（0:20、2:05）。
+- 心情模式实测（真实网络，走插件接口）：`POST /bili-digest/api/mood` → 202，轮询 `/job` 到 `done`，两份 markdown 都落盘（`diary/…` 与 `reports/…`），`GET /bili-digest/api/diary` → 200 返回日记全文（含心情判定、关键词解释、看点、情绪脉络）。
+- 离线单测 74 项全过（核心 11 / 分镜 8 / 心情 12 / 价值观 7 / 写操作 9 / 消息中心 7 / 插件装配 16 / 客户端 4）。
+- 抓帧接口在宿主内实测：`POST /bili-digest/api/frames` → 200 `{"times":[0,165,325]}`（同一条 5:30 视频）；`GET /bili-digest/api/frame?bvid=…&t=100` → 200 `image/jpeg`、35780 字节、JPEG 魔数正确；跨站 `POST` → 403。宿主提供的客户端 bundle 17 KB，含「看画面」按钮与 `/frame` 预览。
+- 收藏写操作实测（真实账号）：`dealFavorite` 加进/移出「我不喜欢的视频」都返回 `code:0`，收藏夹计数随之变化（列表接口有约 1 秒延迟）；评论区氛围样本可正常取回。
+
+## 开发
+
+```bash
+npm test                  # 74 个离线单测（切段/打分/渲染转义/配置校验/门槛/分镜几何/心情解析/日记渲染/价值观评估/写操作/消息配额/插件装配/客户端渲染）
+node test/core.test.js    # 也可以逐文件直接跑（无需子进程）
+node bin/bili-digest.js --help
+```
+
+目录：
+
+```
+lib/core/     纯 Node 核心：http(wbi/白名单/小时预算) · api · gate · segment · render · digest · store · config
+              frames(分镜几何/选帧/裁剪) · jpeg(解码编码) · visual(抓帧编排) · mood(心情解析) · diary(日记渲染)
+lib/index.js  DSH 插件适配层：5 个工具 + /bili-digest/api/* 路由
+client/       手写客户端 bundle（免构建），在「设置 → 插件」里渲染界面（含心情档位、截图预览、日记查看）
+bin/          命令行入口
+```
+
+抓帧依赖 [`jpeg-js`](https://www.npmjs.com/package/jpeg-js)（纯 JS，无原生编译）；它被列在 `dependencies` 的可选安装路径里，缺失时只有「看画面」不可用，字幕通路照常工作。
+
+## 发布
+
+```bash
+# 1) 打 npm 包（本仓库用的是手工 tar 布局，等价于 npm pack）
+tar -czf dsh-plugin-bili-digest-0.1.0.tgz --transform 's,^,package/,' \
+  package.json lib client bin cordis.patch.yml README.md README.zh.md LICENSE
+# Windows 自带 tar 不支持 --transform，改成先放 .pack\package 再 tar -czf out.tgz -C .pack package
+
+# 2) 发布到 npm（本机 .npmrc 指向 npmmirror 镜像，镜像不能发布，需显式指定官方源）
+npm publish --access public --registry=https://registry.npmjs.org
+
+# 3) 推送仓库
+git remote add origin https://github.com/ssy-in/dsh-plugin-bili-digest.git
+git push -u origin main
+```
+
+插件市场（`dshmarket`）的「商店」列表来自 `https://awesome-dsh-plugin.com/plugins.json`（awesome-dsh-plugin 项目）的策展目录，npm 上发布后到该项目提 PR/issue 收录即可；收录前也能装：市场里填 `file:<绝对路径>/dsh-plugin-bili-digest-0.1.0.tgz`，或直接填 `github:ssy-in/dsh-plugin-bili-digest`。
+
+## 许可
+
+MIT。本项目与哔哩哔哩无隶属关系；使用时请遵守 B 站服务条款与 robots 约定，仅用于个人阅读辅助。
