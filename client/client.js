@@ -299,6 +299,9 @@ window.__ModuleLoader__.load({
 				minDuration: "180",
 				maxVideos: "1",
 				autoEveryMinutes: "0",
+				scheduleEnabled: true,
+				activeFrom: "08:00",
+				activeTo: "01:30",
 				autoMoodText: "随便看看",
 				autoKeywords: "",
 				autoOrder: "pubdate",
@@ -337,6 +340,9 @@ window.__ModuleLoader__.load({
 									minDuration: String(data.settings.minDuration === undefined ? current.minDuration : data.settings.minDuration),
 									maxVideos: String(data.settings.maxVideos === undefined ? current.maxVideos : data.settings.maxVideos),
 									autoEveryMinutes: String(data.settings.autoEveryMinutes === undefined ? current.autoEveryMinutes : data.settings.autoEveryMinutes),
+									scheduleEnabled: data.settings.scheduleEnabled !== false,
+									activeFrom: String(data.settings.activeFrom === undefined ? current.activeFrom : data.settings.activeFrom),
+									activeTo: String(data.settings.activeTo === undefined ? current.activeTo : data.settings.activeTo),
 									autoMoodText: String(data.settings.autoMoodText === undefined ? current.autoMoodText : data.settings.autoMoodText),
 									autoKeywords: String(data.settings.autoKeywords === undefined ? current.autoKeywords : data.settings.autoKeywords),
 									autoOrder: String(data.settings.autoOrder === undefined ? current.autoOrder : data.settings.autoOrder),
@@ -416,6 +422,9 @@ window.__ModuleLoader__.load({
 					minDuration: Number(form.minDuration) || 0,
 					maxVideos: Number(form.maxVideos) || 0,
 					autoEveryMinutes: Number(form.autoEveryMinutes) || 0,
+					scheduleEnabled: form.scheduleEnabled !== false,
+					activeFrom: String(form.activeFrom || "08:00"),
+					activeTo: String(form.activeTo || "01:30"),
 					autoMoodText: String(form.autoMoodText || ""),
 					autoKeywords: String(form.autoKeywords || ""),
 					autoOrder: String(form.autoOrder || "pubdate"),
@@ -506,6 +515,9 @@ window.__ModuleLoader__.load({
 											snapshot.data.auto.everyMinutes +
 											" 分钟一条（" +
 											(snapshot.data.auto.keywords ? "关键词「" + snapshot.data.auto.keywords + "」" : "心情「" + snapshot.data.auto.moodText + "」") +
+											(snapshot.data.auto.schedule
+												? "｜" + snapshot.data.auto.schedule.label + "，下一次 " + snapshot.data.auto.schedule.nextAtLocal
+												: "｜固定间隔（没开作息）") +
 											"，已跑 " +
 											snapshot.data.auto.runs +
 											" 次" +
@@ -643,6 +655,23 @@ window.__ModuleLoader__.load({
 							style: inputStyle,
 							value: form.autoEveryMinutes,
 							onChange: (event) => setForm(Object.assign({}, form, { autoEveryMinutes: event.target.value })),
+						})),
+						h(Field, { label: "按作息（睡觉时不刷、饭点更勤）" }, h("input", {
+							type: "checkbox",
+							checked: form.scheduleEnabled !== false,
+							onChange: (event) => setForm(Object.assign({}, form, { scheduleEnabled: event.target.checked })),
+						})),
+						h(Field, { label: "起床时间" }, h("input", {
+							style: inputStyle,
+							placeholder: "08:00",
+							value: form.activeFrom,
+							onChange: (event) => setForm(Object.assign({}, form, { activeFrom: event.target.value })),
+						})),
+						h(Field, { label: "睡觉时间" }, h("input", {
+							style: inputStyle,
+							placeholder: "01:30",
+							value: form.activeTo,
+							onChange: (event) => setForm(Object.assign({}, form, { activeTo: event.target.value })),
 						})),
 						h(Field, { label: "自动刷时的心情" }, h("input", {
 							style: inputStyle,
