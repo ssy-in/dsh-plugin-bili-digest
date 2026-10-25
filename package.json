@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-bili-digest",
   "version": "0.1.0",
-  "description": "瀛楀箷浼樺厛鐨?B 绔欒棰戦槄璇诲櫒锛氭湁瀛楀箷鐨勫彧鎶婂叧閿钀戒氦缁欐ā鍨嬶紝娌℃湁瀛楀箷鐨勬敼鐢ㄥ垎闀滄埅鍥俱€係ubtitle-first Bilibili reader for DeepSeek Harness: feed the model only the dense caption segments, and fall back to storyboard screenshots when a video has no captions.",
+  "description": "字幕优先的 B 站视频阅读器：有字幕的只把关键段落交给模型，没有字幕的改用分镜截图。Subtitle-first Bilibili reader for DeepSeek Harness: feed the model only the dense caption segments, and fall back to storyboard screenshots when a video has no captions.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -27,7 +27,7 @@
     "node": ">=18.17"
   },
   "scripts": {
-    "test": "node scripts/prepare-test.mjs && node test/core.test.js && node test/frames.test.js && node test/mood.test.js && node test/tone.test.js && node test/write.test.js && node test/inbox.test.js && node test/tagbook.test.js && node test/voice.test.js && node test/weights.test.js && node test/schedule.test.js && node test/plugin.test.js && node test/client.test.js",
+    "test": "node scripts/prepare-test.mjs && node test/core.test.js && node test/frames.test.js && node test/mood.test.js && node test/tone.test.js && node test/write.test.js && node test/inbox.test.js && node test/tagbook.test.js && node test/voice.test.js && node test/weights.test.js && node test/schedule.test.js && node test/talks.test.js && node test/short.test.js && node test/plugin.test.js && node test/client.test.js",
     "prepare": "node scripts/prepare-test.mjs",
     "smoke": "node bin/bili-digest.js --help"
   },

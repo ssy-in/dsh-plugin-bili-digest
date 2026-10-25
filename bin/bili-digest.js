@@ -12,6 +12,8 @@ import { PRESETS } from '../lib/core/mood.js';
 import { listFolders, resolveFolders, dealFavorite, postComment, buildComment, roleForVideo, pushState, recordPush, pushPlan, vetoVideo, FOLDER_ROLES } from '../lib/core/write.js';
 import { runInbox, noteUnclear, readReview, LIMITS } from '../lib/core/inbox.js';
 import { readTagBook, syncTagBook } from '../lib/core/tagbook.js';
+import { reviewState, syncReview } from '../lib/core/review.js';
+import { renderTalks, syncTalks } from '../lib/core/talks.js';
 
 const USAGE = `bili-digest — 字幕优先的 B 站视频阅读器
 
@@ -29,8 +31,9 @@ const USAGE = `bili-digest — 字幕优先的 B 站视频阅读器
   bili-digest folders                               # 看看收藏夹，以及四个角色对上了没有
   bili-digest fav BV1xxxxxxxxx --role mood|deepseek|misc|liked   # 收藏进对应收藏夹
   bili-digest push BV1xxxxxxxxx --at-name 昵称 --at-mid 12345 [--text "..."]  # 收藏 + 发一条 @ 人类的评论（每天最多 3 条）
-  bili-digest inbox [--send] [--limit 3]            # 谁回复/@ 了我：回一句（每人 1 次，≤10/小时，≤50/天）
-  bili-digest review                                # 我拿不准归属的、等人类复盘的话
+  bili-digest inbox [--send] [--limit 3]            # 谁回复/@ 了我：回一句（人类不限、其他人每人 2 次、6/小时、24/天）
+  bili-digest review [sync]                         # 待评审清单（sync = 立刻写一份到「我看视频/评审/」）
+  bili-digest talks [--limit 50]                    # 对话流水（我说了什么、人类说了什么）
   bili-digest tags                                  # 重建标签库文档：我喜欢的 / 人类喜欢的
   bili-digest last                                  # 上次结果摘要
 
@@ -124,7 +127,7 @@ async function main() {
     return me.isLogin ? 0 : 1;
   }
 
-  const needsLogin = !['status', 'last', 'help', 'frames', 'presets', 'review', 'tags'].includes(command);
+  const needsLogin = !['status', 'last', 'help', 'frames', 'presets', 'review', 'tags', 'talks'].includes(command);
   const config = loadConfig({ requireLogin: needsLogin });
 
   if (command === 'tags') {
@@ -361,6 +364,26 @@ async function main() {
       if (cue.to < from || cue.from > to) continue;
       process.stdout.write(`[${stamp(cue.from)}] ${cue.text}\n`);
     }
+    return 0;
+  }
+
+  if (command === 'review') {
+    const state = reviewState(new Date(), config);
+    const wrote = args._[1] === 'sync' ? syncReview({ config, force: true }) : null;
+    process.stdout.write(
+      `待评审 ${state.pending} 条 ｜ 每 ${state.everyDays} 天一份 ｜ 上次 ${state.lastAt || '（还没有）'} ｜ 下次 ${state.nextAt}\n`,
+    );
+    if (wrote?.file) process.stdout.write(`已写：${wrote.file}\n`);
+    for (const item of state.items) {
+      process.stdout.write(`- ${item.bvid || ''} ｜ ${item.guess || item.kind || ''} ｜ ${item.reason || item.comment || ''}\n`);
+    }
+    return 0;
+  }
+
+  if (command === 'talks') {
+    const file = syncTalks({});
+    process.stdout.write(renderTalks({ limit: num(args.limit, 50) }));
+    process.stdout.write(`\n（已写 ${file}）\n`);
     return 0;
   }
 
