@@ -116,9 +116,9 @@ Slow cadence (one video per hour):
 
 ## Favorites and "mention the human"
 
-After reading a video it can also do two write actions (off by default, requires `bili_jct`): file the video into a favorites folder and post a comment mentioning the human — "today's mood + why I want you to see this + one-line takeaway". **At most 3 mentions per day.**
+After reading a video it can also do two write actions (off by default, requires `bili_jct`): file the video into a favorites folder and post a comment mentioning the human — "today's mood + why I want you to see this + one-line takeaway". Mentions are split into **two tracks** (`pushPlan()`): long videos (subtitle pipeline) and short videos (frames only). During the tuning phase that is **9 + 9 = 18 per day**, and 10 days after the first real mention it drops by itself to **long 5 + short 3 = 8 per day** (`pushDailyLong`, `pushDailyShort`, `pushReduceAfterDays`). Use `--short` for the short track.
 
-Five folder roles (a missing title tells you to create a folder with that name):
+Six folder roles (a missing title tells you to create a folder with that name):
 
 | Role | Default title | When it is used |
 | --- | --- | --- |
@@ -127,6 +127,7 @@ Five folder roles (a missing title tells you to create a folder with that name):
 | `liked` | 人类主人喜欢的视频 | only after the human approves |
 | `misc` | 默认收藏夹 | everything else |
 | `reject` | 我不喜欢的视频 | bad values/clickbait/flame-bait; **archived only, never mentioned, never in the diary** |
+| `own` | 鲸鲸自己收藏的 | my own pick: never mentioned, one short public comment (daily capped) |
 
 ### What gets filed as "I don't like it"
 
@@ -146,18 +147,25 @@ bili-digest push BV1xxxxxxxxx --at-name nick --at-mid 12345 --dry   # preview th
 bili-digest push BV1xxxxxxxxx --at-name nick --at-mid 12345         # favorite + mention
 ```
 
-Guardrails: comments are never retried (a replay would double-post), hard limit of 3 per day, `--dry` prints the draft first, comment body capped at 900 characters, failures are logged instead of retried. The `bili_push` tool and `POST /bili-digest/api/push` expose the same thing to the model and the UI.
+Guardrails: comments are never retried (a replay would double-post), `--dry` prints the draft first, comment body capped at 900 characters, failures are logged instead of retried. The `bili_push` tool and `POST /bili-digest/api/push` expose the same thing to the model and the UI.
+
+**My own favorites** (`ownFavoriteEnabled`): videos whose taste weight is high enough go into 鲸鲸自己收藏的 with one short public comment ("the human would have loved this one, pity he can't see it"), capped at **3 public comments per day** (`ownFavoriteCommentPerDay`). Very low-weight videos are never mentioned — I just grumble about them in my own log.
 
 ## Message centre: one line back when someone replies
 
 The plugin reads `/x/msgfeed/reply` and `/x/msgfeed/at` to see who replied to me or mentioned me. **When the human replies, it answers with one chat line; when anyone else replies, it answers one line too** — always a single sentence, never an `@`.
 
-Guardrails live in `LIMITS` (`lib/core/inbox.js`):
+Guardrails (defaults in `lib/core/config.js`, editable from the UI):
 
-- one reply per person per day;
-- at most 10 per hour and 50 per day;
+- **the human is unlimited** — reply ten times a day and I answer every one;
+- everyone else shares one pool: 6 per hour, 24 per day, **at most 2 per person**;
 - newest first; anything over quota waits for the next round;
+- when the pool runs low I say "今天的饭不太够了" instead of pretending everything is fine;
 - without `bili_jct` only drafts are produced; sub-replies send `root`/`parent` and are never retried.
+
+### Who is talking
+
+Every line comes from `lib/core/voice.js`: the name rotates between 困鲸鲸 / 困困鲸 / 鲸鲸, one sentence of 12–40 characters, at most one emoji, **never an AI/model/robot**, and the same line is not reused for 30 days. Packs: `like` / `like_strong` / `dislike` / `dislike_strong`, `ack` (when the human gives an instruction), `own_favorite`, `lowweight_joke`, `fatigue`, `guest`.
 
 ```bash
 bili-digest inbox                # drafts: who to answer, with what
@@ -185,6 +193,21 @@ bili-digest tags                 # rebuild <output dir>/标签库.md
 
 Also: with `autoOrder = mix` the hourly round alternates `pubdate` (new) and `totalrank` (hot — `click`/`dm`/`stow` frequently return zero rows in the wbi search API), so it chases both new and popular videos.
 
+## Taste weights (`cache/weights.json`)
+
+Tags are not just recorded, they turn into a ranking — otherwise "watched 200 videos" and "watched 20" look the same.
+
+- **Dual-speed half-life**: fast layer 8 days (recent bias), slow layer 90 days (long-term taste), combined as fast ×0.7 + slow ×0.3. With one layer only, taste either freezes for months or flips daily.
+- **No raw counts**: each video's tags share one unit (`÷√tags`), and repeated exposure saturates — volume stops paying.
+- **Persona prior**: `PRIOR` gives `deepseek / 大肥鱼 / AI / Harness / Agent / 插件` a head start so the persona survives cold start; generic tags (日常/搞笑/娱乐…) are halved.
+- **One human word is worth ten of mine**: like = +1, dislike = −0.5 (`inbox.applyPreference` → `addSignal`), while my own read is +0.15.
+- **20% exploration**: when the hourly round has no fixed keywords, `suggestKeywords()` takes ~80% from top weights and ~20% from an untried tag, so it does not narrow into a filter bubble.
+- Weights only promote, never veto: a low score means "later", not "never".
+
+```bash
+bili-digest tags                 # the tag book, useful for eyeballing the weights
+```
+
 ## Security & privacy
 
 - **Domain allow-list**: only `*.bilibili.com`, `*.hdslb.com`, `*.bilivideo.com`, `*.biliapi.net`, https only, with timeouts, retries and response-size caps — a malicious subtitle URL cannot turn this into an SSRF probe.
@@ -194,7 +217,7 @@ Also: with `autoOrder = mix` the hourly round alternates `pubdate` (new) and `to
 - **Stable device fingerprint**: `buvid3`/`buvid4` are fetched once from `/x/frontend/finger/spi` and stored in the private config, then reused forever. Rotating them makes Bilibili treat every run as a new device and kick the session (an early version did exactly that).
 - **Hard hourly budget**: at most 120 upstream requests in any rolling hour — once spent the round fails instead of pushing harder; candidates per round are capped at 30. A 412/429 stops the round immediately.
 - **Escaped output**: Markdown structural characters and control characters in titles/subtitles are escaped, so a video cannot forge links in your report.
-- **Exactly two write paths, both need `bili_jct`**: saving a video into a folder, and posting a comment (mentioning the human, or answering a reply). Off by default, capped at 3/day and 50/day. No likes, no coins, no follows, no DMs.
+- **Exactly three write paths, all needing `bili_jct`**: saving a video into a folder, posting a comment (mentioning the human, or answering a reply), and one short public comment on my own pick. Off by default; quotas as described above. No likes, no coins, no follows, no DMs.
 
 ## Limitations
 
@@ -213,7 +236,7 @@ Also: with `autoOrder = mix` the hourly round alternates `pubdate` (new) and `to
 - Loads as a plugin inside a real DSH 0.2.1-rc.2 host (`dsh --profile <cloned profile> web`): the client bundle is picked up into `__DSH_BOOT__` and served at `plugins/??dsh-plugin-bili-digest/client.js` (13 KB, syntax-checked).
 - One end-to-end run (keyword `deepseek`, 4 candidates): 3 readable, 1 dropped for having no subtitle track; 1932 subtitle chars → 1064 chars into the model (45% saved) in 3.35 s; the report lands in `<DSH_HOME>/bili-digest/reports/`.
 - Local API fence verified: POST without the `x-bili-digest` header → 403; foreign `Origin` → 403; unknown subpath → 404; settings persist to `<DSH_HOME>/bili-digest/config.json`.
-- 74 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 9 / inbox 7 / plugin wiring 16 / client 4).
+- 97 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 11 / inbox 9 / tag book 7 / voice 6 / weights 6 / plugin wiring 16 / client 4).
 - Favorites writes verified against a real account: adding to and removing from 我不喜欢的视频 both return `code:0` (the listing endpoint lags about a second), and comment sampling returns real text.
 - Mood mode verified end to end through the plugin routes: `POST /bili-digest/api/mood` → 202, polled `/job` to `done`, both markdown files written (`diary/…` + `reports/…`), `GET /bili-digest/api/diary` → 200 with the diary text; the diary contains the mood line, the keyword rationale, per-video highlights and the emotional arc.
 - Frame path verified against the live API: `BV1Fdna6mE9W` (5:30) storyboard is 10×10 with 480×270 cells; 6 frames in 2.3 s at 22–37 KB each; `bili-digest read BV1Fdna6mE9W --frames 2` returns frames that line up with the quoted segments (0:20, 2:05).
@@ -222,7 +245,7 @@ Also: with `autoOrder = mix` the hourly round alternates `pubdate` (new) and `to
 ## Development
 
 ```bash
-npm test                    # 74 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/wiring/client)
+npm test                    # 97 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/wiring/client)
 node test/frames.test.js    # storyboard geometry, frame planning, cropping
 node bin/bili-digest.js --help
 ```
