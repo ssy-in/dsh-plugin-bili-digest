@@ -8,7 +8,8 @@ import path from 'node:path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-inbox-'));
 process.env.BILI_DIGEST_HOME = home;
 
-const { normalize, quotaState, pickPending, buildReplyText, noteUnclear, readReview, LIMITS, recordReply } = await import('../lib/core/inbox.js');
+const { normalize, quotaState, pickPending, buildReplyText, noteUnclear, readReview, LIMITS, recordReply, applyPreference } = await import('../lib/core/inbox.js');
+const { readTagBook } = await import('../lib/core/tagbook.js');
 
 const ownerMid = '9134117';
 
@@ -103,4 +104,20 @@ test('pickPending: 人类的消息会被标成 toOwner', () => {
   assert.equal(picked[0].toOwner, true);
   const other = pickPending([msg({ rpid: '32', mid: '7777' })], quota, ownerMid);
   assert.equal(other.picked[0].toOwner, false);
+});
+
+test('人类说喜欢：记进标签库的 his 栏（没 csrf 时不碰收藏夹）', async () => {
+  const result = await applyPreference(
+    { csrf: '', atMid: ownerMid },
+    { bvid: 'BV1ff411c7ff', text: '这个我喜欢' },
+    'like',
+    { api: { view: async () => ({ aid: 42, title: '被喜欢的视频', tags: ['评测', 'AI'] }) }, now: new Date('2026-10-24T09:00:00Z') },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.favorite, null);
+  const book = readTagBook();
+  const entry = book.his.find((item) => item.bvid === 'BV1ff411c7ff');
+  assert.ok(entry, '应该进 his 栏');
+  assert.equal(entry.note, '人类说喜欢');
+  assert.deepEqual(entry.tags, ['评测', 'AI']);
 });

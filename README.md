@@ -167,6 +167,24 @@ bili-digest review               # things I was not sure about, waiting for the 
 
 **When unsure, do nothing.** If the human's words do not clearly say which video or which folder they mean, the plugin leaves the folders alone and appends "what he said + what I am unsure about" to that day's `*_dailyReport.md` (section `## 人类说的，我拿不准`), also logged in `cache/review.json`, so he can review it later.
 
+**If he says he likes it, it gets saved.** When the human's reply says like/liked/watch this (and not dislike/stop), that video is filed into the "人类主人喜欢的视频" folder and its tags are recorded in the tag book's "liked by the human" column; a clear dislike files it under "我不喜欢的视频". Each message is handled once, independent of the reply quota.
+
+## Tag book (`我看视频/标签库.md`)
+
+Every video that gets read leaves its tags behind, collected into one document:
+
+- "我喜欢的（我看上的）" — the ones I picked to read;
+- "人类喜欢的（你说喜欢的）" — the ones the human said he liked;
+- a frequency table of the tags across both columns.
+
+Tags come from `view/detail` → `data.Tags` (the `view` endpoint does not return tags). If they cannot be fetched the row says so and reading still works. Raw data lives in `cache/tagbook.json`; the document is re-rendered automatically.
+
+```bash
+bili-digest tags                 # rebuild <output dir>/标签库.md
+```
+
+Also: with `autoOrder = mix` the hourly round alternates `pubdate` (new) and `totalrank` (hot — `click`/`dm`/`stow` frequently return zero rows in the wbi search API), so it chases both new and popular videos.
+
 ## Security & privacy
 
 - **Domain allow-list**: only `*.bilibili.com`, `*.hdslb.com`, `*.bilivideo.com`, `*.biliapi.net`, https only, with timeouts, retries and response-size caps — a malicious subtitle URL cannot turn this into an SSRF probe.

@@ -11,6 +11,7 @@ import { frameCountFor, MAX_FRAMES } from '../lib/core/frames.js';
 import { PRESETS } from '../lib/core/mood.js';
 import { listFolders, resolveFolders, dealFavorite, postComment, buildComment, roleForVideo, pushState, recordPush, vetoVideo, FOLDER_ROLES, PUSH_PER_DAY } from '../lib/core/write.js';
 import { runInbox, noteUnclear, readReview, LIMITS } from '../lib/core/inbox.js';
+import { readTagBook, syncTagBook } from '../lib/core/tagbook.js';
 
 const USAGE = `bili-digest — 字幕优先的 B 站视频阅读器
 
@@ -30,6 +31,7 @@ const USAGE = `bili-digest — 字幕优先的 B 站视频阅读器
   bili-digest push BV1xxxxxxxxx --at-name 昵称 --at-mid 12345 [--text "..."]  # 收藏 + 发一条 @ 人类的评论（每天最多 3 条）
   bili-digest inbox [--send] [--limit 3]            # 谁回复/@ 了我：回一句（每人 1 次，≤10/小时，≤50/天）
   bili-digest review                                # 我拿不准归属的、等人类复盘的话
+  bili-digest tags                                  # 重建标签库文档：我喜欢的 / 人类喜欢的
   bili-digest last                                  # 上次结果摘要
 
 环境变量：
@@ -122,8 +124,17 @@ async function main() {
     return me.isLogin ? 0 : 1;
   }
 
-  const needsLogin = !['status', 'last', 'help', 'frames', 'presets', 'review'].includes(command);
+  const needsLogin = !['status', 'last', 'help', 'frames', 'presets', 'review', 'tags'].includes(command);
   const config = loadConfig({ requireLogin: needsLogin });
+
+  if (command === 'tags') {
+    const book = syncTagBook();
+    process.stdout.write(`标签库：${book.file}\n我看上的 ${book.mine} 条／人类喜欢的 ${book.his} 条\n`);
+    if (!book.mine && !book.his) {
+      process.stdout.write('（还没有内容：等下一轮读完视频，或人类在评论里说喜欢，这里就会长出来。）\n');
+    }
+    return 0;
+  }
 
   if (command === 'presets') {
     process.stdout.write(moodUsage());
@@ -195,12 +206,16 @@ async function main() {
   if (command === 'inbox') {
     const send = Boolean(args.send);
     const limit = num(args.limit, 0);
-    const result = await runInbox({ config, send, maxPerRun: limit });
+    const result = await runInbox({ config, send, maxPerRun: limit, save: (patch) => saveConfig(patch) });
     process.stderr.write(
       `消息 ${result.total} 条｜今天还能回 ${result.quota.dayLeft}/${result.quota.limits.perDay}，这一小时还能回 ${result.quota.hourLeft}/${result.quota.limits.perHour}\n`,
     );
     for (const error of result.errors) process.stderr.write(`拉取 ${error.kind} 失败：${error.error}\n`);
     const lines = [];
+    for (const item of result.preferences || []) {
+      const what = item.pref === 'like' ? '说喜欢' : '说不要';
+      lines.push(`人类${what}：${item.applied.bvid || item.bvid} → 「${item.applied.folder}」（收藏请求：${item.applied.favorite || '未发'}，标签库已更新）`);
+    }
     for (const item of send ? result.replied : result.drafts) {
       lines.push(`@${item.nickname}（${item.mid}）${item.toOwner ? '·人类' : ''}：${item.text}`);
       if (item.bvid) lines.push(`    ${item.bvid} https://www.bilibili.com/video/${item.bvid}`);

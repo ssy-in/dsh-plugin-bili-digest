@@ -27,7 +27,7 @@
     "node": ">=18.17"
   },
   "scripts": {
-    "test": "node scripts/prepare-test.mjs && node test/core.test.js && node test/frames.test.js && node test/mood.test.js && node test/tone.test.js && node test/write.test.js && node test/inbox.test.js && node test/plugin.test.js && node test/client.test.js",
+    "test": "node scripts/prepare-test.mjs && node test/core.test.js && node test/frames.test.js && node test/mood.test.js && node test/tone.test.js && node test/write.test.js && node test/inbox.test.js && node test/tagbook.test.js && node test/plugin.test.js && node test/client.test.js",
     "prepare": "node scripts/prepare-test.mjs",
     "smoke": "node bin/bili-digest.js --help"
   },
@@ -42,7 +42,9 @@
     "digest",
     "mood",
     "diary",
-    "token-saving"
+    "token-saving",
+    "tags",
+    "favorites"
   ],
   "license": "MIT",
   "dsh": {

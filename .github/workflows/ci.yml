@@ -30,7 +30,7 @@ jobs:
           node test/mood.test.js
           node test/tone.test.js
           node test/write.test.js
-          node test/inbox.test.js
+          node test/inbox.test.js && node test/tagbook.test.js
           node test/plugin.test.js
           node test/client.test.js
       - name: JSON and YAML sanity
