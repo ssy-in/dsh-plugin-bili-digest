@@ -34,55 +34,85 @@ test('normalize: 从消息中心条目里取到能回评论所需的字段', () 
 });
 
 test('buildReplyText: 给人类一句熟话，给其他人一句客气话，都不带 @', () => {
-  const toOwner = buildReplyText(msg({ mid: ownerMid, text: '把它放我喜欢的视频里' }), { ownerMid });
-  assert.match(toOwner, /收到/);
-  assert.doesNotMatch(toOwner, /@/);
+  const toOwner = buildReplyText(msg({ mid: ownerMid, text: '这个我喜欢' }), { ownerMid });
+  assert.ok(toOwner.text.length > 0);
+  assert.doesNotMatch(toOwner.text, /@/);
+  assert.equal(toOwner.intent, 'like');
   const toOther = buildReplyText(msg({ mid: '2002', text: '路过看看' }), { ownerMid });
-  assert.match(toOther, /谢谢/);
-  assert.doesNotMatch(toOther, /@/);
-  assert.ok(toOwner.length < 90 && toOther.length < 90);
+  assert.match(toOther.text, /(谢谢|路过|记下)/);
+  assert.doesNotMatch(toOther.text, /@/);
+  assert.equal(toOther.intent, 'guest');
+  assert.ok(toOwner.text.length < 90 && toOther.text.length < 90);
 });
 
-test('pickPending: 从新到旧、同一人只回一次、已回过的不再回', () => {
+test('buildReplyText: 人类下指令→应一声；强烈不满→dislike_strong；池子见底→饭不够了', () => {
+  const ack = buildReplyText(msg({ mid: ownerMid, text: '最近多看看 deepseek 的新视频' }), { ownerMid });
+  assert.equal(ack.intent, 'ack');
+  const strong = buildReplyText(msg({ mid: ownerMid, text: '特别不喜欢这种，别再推了' }), { ownerMid });
+  assert.equal(strong.intent, 'dislike_strong');
+  const tired = buildReplyText(msg({ mid: '2003', text: '路过' }), { ownerMid, quota: { hourLeft: 1 } });
+  assert.equal(tired.intent, 'fatigue');
+  assert.match(tired.text, /(饭|力气)/);
+});
+
+test('pickPending: 从新到旧、同一个人最多两次、已回过的不再回', () => {
   const now = new Date();
-  const fresh = { hourUsed: 0, dayUsed: 0, perPerson: {}, limits: LIMITS, hourLeft: LIMITS.perHour, dayLeft: LIMITS.perDay };
+  const fresh = {
+    hourUsed: 0,
+    dayUsed: 0,
+    perPerson: {},
+    limits: LIMITS,
+    hourLeft: LIMITS.otherPerHour,
+    dayLeft: LIMITS.otherPerDay,
+  };
   const messages = [
     msg({ rpid: '11', mid: '3003', ctime: 300 }),
     msg({ rpid: '10', mid: '3003', ctime: 200 }),
+    msg({ rpid: '8', mid: '3003', ctime: 150 }),
     msg({ rpid: '9', mid: '4004', ctime: 100 }),
   ];
   const { picked, skipped } = pickPending(messages, fresh, ownerMid);
-  assert.deepEqual(picked.map((item) => item.rpid), ['11', '9']);
+  // 3003 有 3 条，只回前两条；4004 正常回。
+  assert.deepEqual(picked.map((item) => item.rpid), ['11', '10', '9']);
   assert.equal(skipped.length, 1);
-  assert.match(skipped[0].reason, /回过一次/);
+  assert.match(skipped[0].reason, /回过 2 次/);
 
   recordReply({ id: 'reply:9', mid: '4004' }, now);
   const second = pickPending(messages, quotaState(undefined, now), ownerMid);
-  assert.deepEqual(second.picked.map((item) => item.rpid), ['11']);
+  assert.deepEqual(second.picked.map((item) => item.rpid), ['11', '10']);
 });
 
-test('quotaState: 每小时 10 次、每天 50 次的上限被算出来', () => {
+test('quotaState: 其他人的池子按小时/每天算，人类单独计数且不占池子', () => {
   const now = new Date();
-  const state = quotaState({ items: [] }, now);
-  assert.equal(state.hourLeft, LIMITS.perHour);
-  assert.equal(state.dayLeft, LIMITS.perDay);
+  const state = quotaState({ items: [] }, now, { ownerMid });
+  assert.equal(state.hourLeft, LIMITS.otherPerHour);
+  assert.equal(state.dayLeft, LIMITS.otherPerDay);
   const many = Array.from({ length: 12 }, (_, index) => ({ id: `reply:${index}`, mid: `9${index}`, at: new Date(now.getTime() - index * 1000).toISOString() }));
-  const used = quotaState({ items: many }, now);
+  const used = quotaState({ items: many }, now, { ownerMid });
   assert.equal(used.hourUsed, 12);
   assert.equal(used.hourLeft, 0);
   const old = Array.from({ length: 60 }, (_, index) => ({ id: `old:${index}`, mid: `8${index}`, at: new Date(now.getTime() - (3 * 3600_000 + index * 60_000)).toISOString() }));
-  const dayOnly = quotaState({ items: old }, now);
+  const dayOnly = quotaState({ items: old }, now, { ownerMid });
   assert.equal(dayOnly.hourUsed, 0);
   assert.equal(dayOnly.dayUsed, 60);
   assert.equal(dayOnly.dayLeft, 0);
+  // 人类回了一堆，也不吃池子。
+  const withOwner = Array.from({ length: 30 }, (_, index) => ({ id: `owner:${index}`, mid: ownerMid, at: new Date(now.getTime() - index * 1000).toISOString() }));
+  const ownerState = quotaState({ items: withOwner }, now, { ownerMid });
+  assert.equal(ownerState.dayUsed, 0);
+  assert.equal(ownerState.ownerUsed, 30);
+  assert.equal(ownerState.dayLeft, LIMITS.otherPerDay);
 });
 
-test('pickPending: 配额用完就整批留给下一轮', () => {
+test('pickPending: 配额用完就整批留给下一轮；但人类的消息照样回', () => {
   const now = new Date();
-  const quota = { hourUsed: 10, dayUsed: 10, perPerson: {}, limits: LIMITS, hourLeft: 0, dayLeft: 40 };
+  const quota = { hourUsed: LIMITS.otherPerHour, dayUsed: 10, perPerson: {}, limits: LIMITS, hourLeft: 0, dayLeft: 0 };
   const { picked, skipped } = pickPending([msg({ rpid: '21', mid: '5005' })], quota, ownerMid);
   assert.equal(picked.length, 0);
   assert.match(skipped[0].reason, /这一小时/);
+  const owner = pickPending([msg({ rpid: '22', mid: ownerMid })], quota, ownerMid);
+  assert.equal(owner.picked.length, 1, '人类不限额');
+  assert.equal(owner.picked[0].toOwner, true);
 });
 
 test('noteUnclear: 把人类的话和我的不确定写进 review.json 与当天日报', () => {
@@ -99,7 +129,7 @@ test('noteUnclear: 把人类的话和我的不确定写进 review.json 与当天
 });
 
 test('pickPending: 人类的消息会被标成 toOwner', () => {
-  const quota = { hourUsed: 0, dayUsed: 0, perPerson: {}, limits: LIMITS, hourLeft: 10, dayLeft: 50 };
+  const quota = { hourUsed: 0, dayUsed: 0, perPerson: {}, limits: LIMITS, hourLeft: LIMITS.otherPerHour, dayLeft: LIMITS.otherPerDay };
   const { picked } = pickPending([msg({ rpid: '31', mid: ownerMid })], quota, ownerMid);
   assert.equal(picked[0].toOwner, true);
   const other = pickPending([msg({ rpid: '32', mid: '7777' })], quota, ownerMid);

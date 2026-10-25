@@ -9,7 +9,7 @@ import { stamp } from '../lib/core/segment.js';
 import { collectFrames, saveFrames } from '../lib/core/visual.js';
 import { frameCountFor, MAX_FRAMES } from '../lib/core/frames.js';
 import { PRESETS } from '../lib/core/mood.js';
-import { listFolders, resolveFolders, dealFavorite, postComment, buildComment, roleForVideo, pushState, recordPush, vetoVideo, FOLDER_ROLES, PUSH_PER_DAY } from '../lib/core/write.js';
+import { listFolders, resolveFolders, dealFavorite, postComment, buildComment, roleForVideo, pushState, recordPush, pushPlan, vetoVideo, FOLDER_ROLES } from '../lib/core/write.js';
 import { runInbox, noteUnclear, readReview, LIMITS } from '../lib/core/inbox.js';
 import { readTagBook, syncTagBook } from '../lib/core/tagbook.js';
 
@@ -180,26 +180,36 @@ async function main() {
       if (args['at-mid']) patch.atMid = String(atMid);
       saveConfig(patch);
     }
-    const state = pushState();
-    if (state.remaining <= 0) throw new Error(`今天已经 @ 了 ${state.count} 条（上限 ${PUSH_PER_DAY}），明天再说`);
+    const track = args.short ? 'short' : 'long';
+    const plan = pushPlan(config);
+    const state = pushState(new Date(), config);
+    const left = track === 'short' ? state.shortRemaining : state.longRemaining;
+    if (left <= 0) {
+      throw new Error(
+        `今天${track === 'short' ? '短' : '长'}视频已经 @ 了 ${state.tracks[track]} 条（上限 ${track === 'short' ? plan.shortLimit : plan.longLimit}），明天再说`,
+      );
+    }
     const api = createApi(config);
     const video = await api.view(bvid);
     const last = readLastDigest();
     const section = (last?.sections || []).find((item) => item.bvid === bvid) || { meta: video };
     const role = typeof args.role === 'string' ? args.role : roleForVideo({ mood: last?.mood, title: video.title, summary: video.desc || '', keywords: last?.mood?.keywords });
     const text = typeof args.text === 'string' ? args.text : buildComment({ mood: last?.mood, section, atName });
-    process.stderr.write(`角色：${role}（${FOLDER_ROLES[role]?.title || '未知'}）｜今天还能 @ ${state.remaining} 条\n`);
+    process.stderr.write(`角色：${role}（${FOLDER_ROLES[role]?.title || '未知'}）｜${track === 'short' ? '短视频' : '长视频'}档还能 @ ${left} 条｜今天共 ${state.remaining}/${plan.totalLimit}\n`);
     process.stderr.write(`评论草稿：\n${text}\n`);
     if (args.dry) {
       process.stdout.write('（--dry：只打印，不落收藏夹、不发评论）\n');
       return 0;
     }
+    if (!config.pushTestStart) saveConfig({ pushTestStart: new Date().toISOString() });
     const roles = await resolveFolders(config, (patch) => saveConfig(patch));
     const mediaId = roles[role];
     if (mediaId) await dealFavorite(config, { aid: video.aid, add: [mediaId] });
     const posted = await postComment(config, { oid: video.aid, message: text, atName, atMid });
-    const after = recordPush({ bvid, role, rpid: posted.rpid, text });
-    process.stdout.write(`已收藏《${video.title}》→ ${FOLDER_ROLES[role]?.title || role}${atName ? `，并在视频下 @ 了 ${atName}` : ''}｜今天第 ${after.count}/${PUSH_PER_DAY} 条\n`);
+    const after = recordPush({ bvid, role, rpid: posted.rpid, text, track }, new Date(), config);
+    process.stdout.write(
+      `已收藏《${video.title}》→ ${FOLDER_ROLES[role]?.title || role}${atName ? `，并在视频下 @ 了 ${atName}` : ''}｜今天共 ${after.count}/${after.plan.totalLimit} 条（长 ${after.tracks.long}/${after.plan.longLimit}、短 ${after.tracks.short}/${after.plan.shortLimit}）\n`,
+    );
     return 0;
   }
 
@@ -208,7 +218,7 @@ async function main() {
     const limit = num(args.limit, 0);
     const result = await runInbox({ config, send, maxPerRun: limit, save: (patch) => saveConfig(patch) });
     process.stderr.write(
-      `消息 ${result.total} 条｜今天还能回 ${result.quota.dayLeft}/${result.quota.limits.perDay}，这一小时还能回 ${result.quota.hourLeft}/${result.quota.limits.perHour}\n`,
+      `消息 ${result.total} 条｜其他人这一小时还能回 ${result.quota.hourLeft}/${result.quota.limits.otherPerHour}、今天还能回 ${result.quota.dayLeft}/${result.quota.limits.otherPerDay}｜人类已回 ${result.quota.ownerUsed} 条（不限额）\n`,
     );
     for (const error of result.errors) process.stderr.write(`拉取 ${error.kind} 失败：${error.error}\n`);
     const lines = [];

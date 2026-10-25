@@ -8,7 +8,7 @@ import path from 'node:path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-write-'));
 process.env.BILI_DIGEST_HOME = home;
 
-const { roleForVideo, oneLine, buildComment, pushState, recordPush, FOLDER_ROLES, PUSH_PER_DAY } = await import('../lib/core/write.js');
+const { roleForVideo, oneLine, buildComment, pushState, recordPush, pushPlan, markPushStart, ownLedger, recordOwn, FOLDER_ROLES } = await import('../lib/core/write.js');
 const { validateCsrf } = await import('../lib/core/config.js');
 
 const section = {
@@ -68,22 +68,59 @@ test('validateCsrf: 只收 cookie 安全字符', () => {
   assert.throws(() => validateCsrf(''), /非法字符/);
 });
 
-test('pushState/recordPush: 每天最多 3 条', () => {
+test('pushState/recordPush: 长/短两条赛道，测试期各 9 条，10 天后回落到 5/3', () => {
   const day = new Date('2026-10-24T09:00:00');
-  const first = pushState(day);
+  const config = { pushTestStart: new Date('2026-10-24T09:00:00').toISOString(), pushReduceAfterDays: 10 };
+  const first = pushState(day, config);
   assert.equal(first.count, 0);
-  assert.equal(first.remaining, PUSH_PER_DAY);
+  assert.equal(first.plan.phase, 'test');
+  assert.equal(first.plan.longLimit, 9);
+  assert.equal(first.plan.shortLimit, 9);
+  assert.equal(first.remaining, 18);
+
   let state = first;
-  for (let i = 1; i <= PUSH_PER_DAY; i += 1) state = recordPush({ bvid: `BV${i}` }, day);
-  assert.equal(state.count, PUSH_PER_DAY);
+  for (let i = 1; i <= 9; i += 1) state = recordPush({ bvid: `BVlong${i}`, track: 'long' }, day, config);
+  assert.equal(state.tracks.long, 9);
+  assert.equal(state.longRemaining, 0);
+  assert.equal(state.shortRemaining, 9);
+  for (let i = 1; i <= 9; i += 1) state = recordPush({ bvid: `BVshort${i}`, track: 'short' }, day, config);
   assert.equal(state.remaining, 0);
-  assert.equal(pushState(day).count, PUSH_PER_DAY);
+
   // 换一天账本清零
-  const nextDay = pushState(new Date('2026-10-25T00:10:00'));
+  const nextDay = pushState(new Date('2026-10-25T00:10:00'), config);
   assert.equal(nextDay.count, 0);
-  assert.equal(nextDay.remaining, PUSH_PER_DAY);
+  assert.equal(nextDay.remaining, 18);
+
+  // 10 天之后回落到长 5 + 短 3
+  const later = pushPlan(config, new Date('2026-11-05T09:00:00'));
+  assert.equal(later.phase, 'normal');
+  assert.equal(later.longLimit, 5);
+  assert.equal(later.shortLimit, 3);
+
   assert.deepEqual(FOLDER_ROLES.liked.title, '人类主人喜欢的视频');
   assert.deepEqual(FOLDER_ROLES.reject.title, '我不喜欢的视频');
+});
+
+test('markPushStart: 第一次真发时把测试起点记进配置', () => {
+  const saved = [];
+  const start = markPushStart({}, (patch) => saved.push(patch), new Date('2026-10-24T09:00:00Z'));
+  assert.equal(start, '2026-10-24T09:00:00.000Z');
+  assert.deepEqual(saved, [{ pushTestStart: '2026-10-24T09:00:00.000Z' }]);
+  const again = markPushStart({ pushTestStart: 'x' }, (patch) => saved.push(patch));
+  assert.equal(again, 'x');
+  assert.equal(saved.length, 1, '已经有起点就不再写');
+});
+
+test('ownLedger/recordOwn: 只给公开短评计数，收藏照收，跨日清零', () => {
+  const day = new Date('2026-10-24T09:00:00');
+  assert.equal(ownLedger(day).comments, 0);
+  recordOwn({ bvid: 'BV1', commented: true }, day);
+  recordOwn({ bvid: 'BV2', commented: false }, day);
+  const ledger = ownLedger(day);
+  assert.equal(ledger.comments, 1);
+  assert.equal(ledger.kept.length, 2);
+  assert.equal(ownLedger(new Date('2026-10-25T09:00:00')).comments, 0);
+  assert.deepEqual(FOLDER_ROLES.own.title, '鲸鲸自己收藏的');
 });
 
 test('cleanup', () => {
