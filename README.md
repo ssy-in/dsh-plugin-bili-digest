@@ -116,7 +116,7 @@ Slow cadence (one video per hour):
 
 ## Favorites and "mention the human"
 
-After reading a video it can also do two write actions (off by default, requires `bili_jct`): file the video into a favorites folder and post a comment mentioning the human — "today's mood + why I want you to see this + one-line takeaway". Mentions are split into **two tracks** (`pushPlan()`): long videos (subtitle pipeline) and short videos (frames only). During the tuning phase that is **9 + 9 = 18 per day**, and 10 days after the first real mention it drops by itself to **long 5 + short 3 = 8 per day** (`pushDailyLong`, `pushDailyShort`, `pushReduceAfterDays`). Use `--short` for the short track.
+After reading a video it can also do two write actions (off by default, requires `bili_jct`): file the video into a favorites folder and post a comment mentioning the human — "today's mood + why I want you to see this + one-line takeaway". Mentions are split into **two tracks** (`pushPlan()`): long videos (subtitle pipeline) and short videos (frames only). During the tuning phase that is **9 + 9 = 18 per day**; the countdown only starts on the **first day that actually uses half the quota** (9 sends — a day with one or two videos does not start the clock, see `pushStartAfterRatio`), and 10 days later it drops by itself to **long 5 + short 3 = 8 per day** (`pushDailyLong`, `pushDailyShort`, `pushReduceAfterDays`, `pushTestStart`). Use `--short` for the short track.
 
 Six folder roles (a missing title tells you to create a folder with that name):
 

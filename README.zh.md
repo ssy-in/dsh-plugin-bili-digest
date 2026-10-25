@@ -151,7 +151,7 @@ bili-digest push BV1xxxxxxxxx --at-name 昵称 --at-mid 12345         # 收藏 +
 
 写操作的护栏：单条评论不重试（重放会变重复评论）、`--dry` 可以先看草稿、评论正文上限 900 字、失败只记日志不反复重试。
 
-**每天 @ 多少条**分两条赛道（`pushPlan()`）：长视频（走字幕）与短视频（只抓画面）各算各的。测试期默认 **长 9 + 短 9 = 18 条/天**，从第一次真发那天起 **10 天**后自动回落到 **长 5 + 短 3 = 8 条/天**；想立刻改就改配置里的 `pushDailyLong`/`pushDailyShort`/`pushReduceAfterDays`。短视频用 `--short` 走短赛道。
+**每天 @ 多少条**分两条赛道（`pushPlan()`）：长视频（走字幕）与短视频（只抓画面）各算各的。测试期默认 **长 9 + 短 9 = 18 条/天**，从**第一次"刷够量"的那天**起算（当天发满 `18 × 0.5 = 9` 条才落定起点，只发一两条的日子不开始倒计时，`pushStartAfterRatio`），**10 天**后自动回落到 **长 5 + 短 3 = 8 条/天**；想立刻改就改配置里的 `pushDailyLong`/`pushDailyShort`/`pushReduceAfterDays`/`pushTestStart`。短视频用 `--short` 走短赛道。
 
 **我自己的收藏夹**（`ownFavoriteEnabled`）：权重够高的视频我会收进「鲸鲸自己收藏的」，并公开留一句短评（如「人类主人平常最喜欢这种了，可惜他看不到」），这类短评**每天最多 3 条**（`ownFavoriteCommentPerDay`）；权重很低的不打扰人类，只在自己的日志里吐槽一句。
 

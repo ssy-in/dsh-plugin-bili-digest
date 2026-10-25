@@ -8,7 +8,7 @@ import path from 'node:path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-write-'));
 process.env.BILI_DIGEST_HOME = home;
 
-const { roleForVideo, oneLine, buildComment, pushState, recordPush, pushPlan, markPushStart, ownLedger, recordOwn, FOLDER_ROLES } = await import('../lib/core/write.js');
+const { roleForVideo, oneLine, buildComment, pushState, recordPush, pushPlan, markPushStart, maybeMarkPushStart, localDayStartIso, ownLedger, recordOwn, FOLDER_ROLES } = await import('../lib/core/write.js');
 const { validateCsrf } = await import('../lib/core/config.js');
 
 const section = {
@@ -101,14 +101,34 @@ test('pushState/recordPush: 长/短两条赛道，测试期各 9 条，10 天后
   assert.deepEqual(FOLDER_ROLES.reject.title, '我不喜欢的视频');
 });
 
-test('markPushStart: 第一次真发时把测试起点记进配置', () => {
+test('markPushStart/maybeMarkPushStart: 只在「一天真发够一半额度」时落定测试起点', () => {
   const saved = [];
-  const start = markPushStart({}, (patch) => saved.push(patch), new Date('2026-10-24T09:00:00Z'));
-  assert.equal(start, '2026-10-24T09:00:00.000Z');
-  assert.deepEqual(saved, [{ pushTestStart: '2026-10-24T09:00:00.000Z' }]);
-  const again = markPushStart({ pushTestStart: 'x' }, (patch) => saved.push(patch));
-  assert.equal(again, 'x');
-  assert.equal(saved.length, 1, '已经有起点就不再写');
+  const forced = markPushStart({}, (patch) => saved.push(patch), new Date('2026-10-24T09:00:00Z'));
+  assert.equal(forced, '2026-10-24T09:00:00.000Z');
+  assert.equal(markPushStart({ pushTestStart: 'x' }, (patch) => saved.push(patch)), 'x', '已经有起点就不再写');
+
+  // 当天只发了 8 条（不到 18 的一半）→ 不开始倒计时
+  const day = new Date('2026-12-01T09:00:00');
+  let config = {};
+  for (let i = 1; i <= 8; i += 1) {
+    recordPush({ bvid: `BVhalf${i}`, track: 'long' }, day, config, (patch) => Object.assign(config, patch));
+  }
+  assert.equal(maybeMarkPushStart(config, () => {}, day), '', '没发够量就不落起点');
+  assert.equal(config.pushTestStart, undefined);
+
+  // 另一天先发 8 条仍不落定，第 9 条才落定当天 0 点
+  const day2 = new Date('2026-12-02T10:00:00');
+  const writes = [];
+  let cfg2 = {};
+  for (let i = 1; i <= 8; i += 1) {
+    recordPush({ bvid: `BVnine-${i}`, track: 'long' }, day2, cfg2, (patch) => Object.assign(cfg2, patch));
+  }
+  assert.equal(cfg2.pushTestStart, undefined, '第 8 条还不落定');
+  const after = recordPush({ bvid: 'BVnine', track: 'long' }, day2, cfg2, (patch) => writes.push(patch));
+  assert.equal(writes.length, 1, '第 9 条落定起点');
+  assert.equal(writes[0].pushTestStart, localDayStartIso(day2));
+  assert.equal(after.plan.phase, 'test', '刚落定仍在测试期');
+  assert.equal(pushPlan({ pushTestStart: writes[0].pushTestStart }, new Date('2026-12-13T10:00:00')).phase, 'normal', '10 天后转常态');
 });
 
 test('ownLedger/recordOwn: 只给公开短评计数，收藏照收，跨日清零', () => {

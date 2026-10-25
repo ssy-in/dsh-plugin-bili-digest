@@ -201,12 +201,11 @@ async function main() {
       process.stdout.write('（--dry：只打印，不落收藏夹、不发评论）\n');
       return 0;
     }
-    if (!config.pushTestStart) saveConfig({ pushTestStart: new Date().toISOString() });
     const roles = await resolveFolders(config, (patch) => saveConfig(patch));
     const mediaId = roles[role];
     if (mediaId) await dealFavorite(config, { aid: video.aid, add: [mediaId] });
     const posted = await postComment(config, { oid: video.aid, message: text, atName, atMid });
-    const after = recordPush({ bvid, role, rpid: posted.rpid, text, track }, new Date(), config);
+    const after = recordPush({ bvid, role, rpid: posted.rpid, text, track }, new Date(), config, (patch) => saveConfig(patch));
     process.stdout.write(
       `已收藏《${video.title}》→ ${FOLDER_ROLES[role]?.title || role}${atName ? `，并在视频下 @ 了 ${atName}` : ''}｜今天共 ${after.count}/${after.plan.totalLimit} 条（长 ${after.tracks.long}/${after.plan.longLimit}、短 ${after.tracks.short}/${after.plan.shortLimit}）\n`,
     );
