@@ -88,6 +88,15 @@ Subtitles are not enough: plenty of small channels ship no `ai-zh` track, and UI
 - Default count by duration: <3 min 6 frames, 3–15 min 12, 15–45 min 16, >45 min 20; hard cap 24 per call. For "check this one moment" 1–4 frames is enough.
 - In the plugin UI every dropped video has a "see frames" button that previews the screenshots and links to the exact moment.
 
+## Short videos: no captions, just tags + frames
+
+Cosplay, mobile/console/esports clips, fan edits and game news are almost always **under five minutes**, and they rarely carry an AI caption track. Anything at or below `shortVideoMax` (default **300 s**) therefore takes a different lane:
+
+- **no subtitle lookup at all** (saves the `player/v2` call and the caption download);
+- only **title + tags + uploader + 3 frames** (`shortFrames`, default 3); frames land in `我看视频/画面/<BV>/`;
+- the diary keeps a single line per short video — title, duration, tags, "N frames" — no long summary and no emotional arc;
+- set `shortVideoMax` to 0 to turn the lane off and go back to "captions or nothing".
+
 ## Browsing by mood (the mood diary)
 
 No scheduled daily crawl: you browse **when you feel like it, in the mood you are in**. A round writes pairs of markdown files into one folder (default `我看视频/`, configurable in the panel), named `date_BV_…` so you can tell at a glance which video each belongs to:
@@ -171,7 +180,11 @@ Every line comes from `lib/core/voice.js`: the name rotates between 困鲸鲸 / 
 bili-digest inbox                # drafts: who to answer, with what
 bili-digest inbox --send         # actually send, within quota
 bili-digest review               # things I was not sure about, waiting for the human
+bili-digest review sync          # write 我看视频/评审/YYYYMMDD.md right now
+bili-digest talks                # conversation log (mine and the human's) -> 我看视频/对话.md
 ```
+
+`talks` records the **conversation itself** (who, when, what, which video); `review` records **my judgement** (what I guessed you liked or disliked, and on what evidence). Both exist so a later review can tell how accurate I was; a review sheet is produced automatically every 3 days and the auto round mentions it.
 
 **When unsure, do nothing.** If the human's words do not clearly say which video or which folder they mean, the plugin leaves the folders alone and appends "what he said + what I am unsure about" to that day's `*_dailyReport.md` (section `## 人类说的，我拿不准`), also logged in `cache/review.json`, so he can review it later.
 
