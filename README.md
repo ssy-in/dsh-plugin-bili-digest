@@ -173,6 +173,7 @@ bili-digest review               # things I was not sure about, waiting for the 
 - **SESSDATA is write-only**: never echoed by the UI or the API, character-set validated (rejects `;` and CRLF to prevent cookie-header injection), stored with mode 0600.
 - **Local HTTP API is same-origin only**: checks `Sec-Fetch-Site` / `Origin`; mutations additionally require the `x-bili-digest: 1` header, which cross-site forms cannot set. No CORS headers are returned.
 - **Rate limited**: minimum 260 ms between upstream requests, with jitter.
+- **Stable device fingerprint**: `buvid3`/`buvid4` are fetched once from `/x/frontend/finger/spi` and stored in the private config, then reused forever. Rotating them makes Bilibili treat every run as a new device and kick the session (an early version did exactly that).
 - **Hard hourly budget**: at most 120 upstream requests in any rolling hour — once spent the round fails instead of pushing harder; candidates per round are capped at 30. A 412/429 stops the round immediately.
 - **Escaped output**: Markdown structural characters and control characters in titles/subtitles are escaped, so a video cannot forge links in your report.
 - **Exactly two write paths, both need `bili_jct`**: saving a video into a folder, and posting a comment (mentioning the human, or answering a reply). Off by default, capped at 3/day and 50/day. No likes, no coins, no follows, no DMs.

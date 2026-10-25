@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import { run, runAndSave, runMood, createApi, loadConfig } from '../lib/core/digest.js';
 import { readVideo, VERDICT } from '../lib/core/gate.js';
-import { saveConfig, configPath, dataDir } from '../lib/core/config.js';
+import { saveConfig, configPath, dataDir, refreshBuvid } from '../lib/core/config.js';
 import { readLastDigest, paths } from '../lib/core/store.js';
 import { stamp } from '../lib/core/segment.js';
 import { collectFrames, saveFrames } from '../lib/core/visual.js';
@@ -113,6 +113,9 @@ async function main() {
       process.stdout.write(`bili_jct 已写入 ${saved.file}（写操作已解锁）\n`);
     }
     if (!sessdata && !jct) throw new Error('用法：bili-digest login --sessdata <SESSDATA> [--jct <bili_jct>]');
+    // 先固定设备指纹，再验登录：指纹每次都变的话 B 站会把登录态当新设备踢掉。
+    const fingerprint = await refreshBuvid();
+    process.stderr.write(`设备指纹已固定（buvid3 ${fingerprint.buvid3.slice(0, 8)}…）\n`);
     const api = createApi(loadConfig());
     const me = await api.me();
     process.stdout.write(me.isLogin ? `登录成功：${me.uname}（mid ${me.mid}）\n` : 'SESSDATA 无效或已过期\n');
