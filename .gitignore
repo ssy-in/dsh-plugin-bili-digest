@@ -14,3 +14,7 @@ lab/
 .tmp-mood/
 diary/
 .home/
+
+# 凭据（永远不要入库）
+.secrets/
+*.env
