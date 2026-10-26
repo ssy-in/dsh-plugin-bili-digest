@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { parseClock, inWindow, currentSlot, isAwake, nextWake, planNextRun, describeSchedule, SCHEDULE_DEFAULTS } = await import('../lib/core/schedule.js');
+const { parseClock, inWindow, currentSlot, isAwake, nextWake, planNextRun, describeSchedule, catchUpPlan, SCHEDULE_DEFAULTS } = await import('../lib/core/schedule.js');
 
 const at = (text) => new Date(text);
 const noJitter = () => 0.5;
@@ -82,4 +82,25 @@ test('describeSchedule：给界面的一句话，含醒着与否与下次时间'
   assert.equal(sleep.awake, false);
   assert.match(sleep.label, /睡觉中/);
   assert.equal(sleep.slot, 'sleep');
+});
+
+test('catchUpPlan：没跑过就补一轮，间隔没到就不补，睡觉时段只等起床', () => {
+  const base = { autoEveryMinutes: 30, scheduleEnabled: true, activeFrom: '08:00', activeTo: '01:30' };
+  // 从没跑过（上午 10:00，醒着）→ 补
+  const first = catchUpPlan(new Date('2026-10-25T10:00:00'), base);
+  assert.equal(first.overdue, true);
+  assert.ok(first.delayMs > 0 && first.delayMs <= 70000);
+  // 20 分钟前刚跑过 → 不补
+  const recent = catchUpPlan(new Date('2026-10-25T10:20:00'), { ...base, lastAutoAt: '2026-10-25T10:00:00' });
+  assert.equal(recent.overdue, false);
+  assert.equal(recent.delayMs, null);
+  // 3 小时前跑过 → 补
+  const stale = catchUpPlan(new Date('2026-10-25T13:00:00'), { ...base, lastAutoAt: '2026-10-25T10:00:00' });
+  assert.equal(stale.overdue, true);
+  // 凌晨 3 点没跑过 → 不硬跑（睡觉时段）
+  const night = catchUpPlan(new Date('2026-10-25T03:00:00'), base);
+  assert.equal(night.overdue, true);
+  assert.equal(night.delayMs, null);
+  // 关掉自动刷 → 永远不补
+  assert.equal(catchUpPlan(new Date('2026-10-25T10:00:00'), { ...base, autoEveryMinutes: 0 }).delayMs, null);
 });
