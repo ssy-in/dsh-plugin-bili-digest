@@ -18,3 +18,4 @@ diary/
 # 凭据（永远不要入库）
 .secrets/
 *.env
+.pack/
