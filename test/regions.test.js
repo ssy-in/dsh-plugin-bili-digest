@@ -55,10 +55,17 @@ test('每个地方都在 0–1 之间，没有哪个城市直接掉到 0', () =>
   }
 });
 
-test('普通天落在 0.5–0.65 这一档，顶峰明显高过普通天', () => {
-  assert.ok(scores.杭州潮秋 >= 0.5 && scores.杭州潮秋 <= 0.68, `普通天应该 0.5–0.68，实际 ${scores.杭州潮秋}`);
+test('普通天落在 0.6–0.78 这一档，顶峰明显高过普通天', () => {
+  assert.ok(scores.杭州潮秋 >= 0.6 && scores.杭州潮秋 <= 0.78, `普通天应该 0.6–0.78，实际 ${scores.杭州潮秋}`);
   assert.ok(scores.理想顶峰 >= scores.杭州潮秋 + 0.1, `顶峰要拉开差距：${scores.理想顶峰} vs ${scores.杭州潮秋}`);
   assert.equal(level(scores.理想顶峰), 'delighted');
+});
+
+test('大部分地方都是"不错以上"，只有真极端才掉到很差', () => {
+  const good = Object.entries(scores).filter(([, value]) => level(value) === 'content' || level(value) === 'delighted');
+  const bad = Object.entries(scores).filter(([, value]) => level(value) === 'miserable');
+  assert.ok(good.length >= 7, `不错以上至少 7 个，实际 ${good.length}：${good.map(([name]) => name).join('、')}`);
+  assert.equal(bad.length, 0, `不该有谷底：${bad.map(([name, value]) => `${name} ${value}`).join('、')}`);
 });
 
 test('大陆温度跨度：−30℃ 和 40℃ 都难受，但都不归零', () => {

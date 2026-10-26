@@ -120,7 +120,7 @@ test('紫外线阈值比人类低：3 以上就开始烦，8 以上很难受', (
   const at = (uvMax) => weatherFeeling(weather({ uvMax, uv: uvMax, temp: 10 }), { place }).score;
   assert.ok(at(2) > at(5), 'UV 5 应比 UV 2 差');
   assert.ok(at(5) > at(9), 'UV 9 应比 UV 5 更差');
-  assert.ok(at(11) <= at(2) - 0.1, 'UV 11 要明显低于 UV 2（紫外线扣分有上限，别一晒就崩）');
+  assert.ok(at(11) <= at(2) - 0.05, 'UV 11 要低于 UV 2（紫外线扣分有上限，别一晒就崩）');
 });
 
 test('湿度过 60% 加分，95% 封顶', () => {

@@ -33,9 +33,9 @@ export const WHALE_PREFS = {
   // 只有真正离谱的时候才掉到很难受，不然一天到晚都是坏心情。
   tempMin: -12, // −12℃ 以上到 22℃ 都不扣分
   tempMax: 22,
-  tempPerDegreeCold: 0.015, // 比 −12℃ 更低时每度扣多少
-  tempPerDegreeWarm: 0.012, // 比 22℃ 更高时每度扣多少
-  tempPenaltyCap: 0.28, // 温度再极端也只扣到这里
+  tempPerDegreeCold: 0.010, // 比 −12℃ 更低时每度扣多少
+  tempPerDegreeWarm: 0.008, // 比 22℃ 更高时每度扣多少
+  tempPenaltyCap: 0.20, // 温度再极端也只扣到这里
   // 冷水里最开心：这段时间直接给一笔正分（比单纯的"没扣分"更高兴）
   coolJoyFrom: -8,
   coolJoyTo: 12,
@@ -48,16 +48,16 @@ export const WHALE_PREFS = {
   humidityCapFrom: 95, // 到 95% 就封顶，再潮也不加了
   humidityPerTen: 0.02,
   uvComfortMax: 3, // 比人类的 6 低一半：我皮薄
-  uvPerPoint: 0.03,
-  uvPenaltyCap: 0.12,
-  gustBadFrom: 40, // km/h，阵风超过就开始烦
-  windBadFrom: 25,
+  uvPerPoint: 0.02,
+  uvPenaltyCap: 0.08,
+  gustBadFrom: 50, // km/h，阵风超过就开始烦
+  windBadFrom: 30,
   rainBonusMax: 0.06, // 小雨/中雨最多加多少
-  rainHeavyPenalty: 0.10, // 大雨
-  stormPenalty: 0.22, // 雷
+  rainHeavyPenalty: 0.08, // 大雨
+  stormPenalty: 0.15, // 雷
   homeFullDistanceKm: 400, // 这个距离内都算"在家门口"，不扣分
-  homePerKm: 0.00005, // 超出后每公里扣多少（内陆城市普遍离东海远，扣太狠全成坏心情）
-  homeMaxPenalty: 0.15,
+  homePerKm: 0.00002, // 超出后每公里扣多少（内陆城市普遍离东海远，扣太狠全成坏心情）
+  homeMaxPenalty: 0.06,
   napMinutes: [10, 20], // 一次睡 10–20 分钟（全天拆着睡）
   sleepHoursTotal: [5, 8], // 一天凑 5–8 小时
   riceDayPercent: 70, // 白天约 7 成时间在吃白饭
@@ -65,7 +65,7 @@ export const WHALE_PREFS = {
   riceBonus: 0.03, // 吃着/刚吃完：心情往上
   riceHungryPenalty: 0.03, // 好久没吃：往下
   interruptPenalty: 0.06, // 睡觉时间或吃饭时候被叫起来干活
-  moodBaseline: 0.46, // m07012：普通天气要落在 0.55–0.6，顶峰才拉得开
+  moodBaseline: 0.57, // m07012：普通天气要落在 0.55–0.6，顶峰才拉得开
   // 饿的程度（按上次吃过多久算，比随机更讲道理）
   justAteHours: 0.75,
   peckishHours: 2.5,
@@ -200,12 +200,12 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
   const wind = Number(weather.wind);
   const gust = Number(weather.gust);
   if (Number.isFinite(wind) && wind > prefs.windBadFrom) {
-    const penalty = Math.min(0.15, (wind - prefs.windBadFrom) * 0.01);
+    const penalty = Math.min(0.10, (wind - prefs.windBadFrom) * 0.008);
     add(`风 ${Math.round(wind)} km/h`, -penalty);
     score -= penalty;
   }
   if (Number.isFinite(gust) && gust > prefs.gustBadFrom) {
-    const penalty = Math.min(0.2, (gust - prefs.gustBadFrom) * 0.008);
+    const penalty = Math.min(0.12, (gust - prefs.gustBadFrom) * 0.006);
     add(`阵风 ${Math.round(gust)} km/h`, -penalty);
     score -= penalty;
   }
@@ -237,9 +237,9 @@ export function moodFromScore(score, { now = new Date() } = {}) {
   const part = dayPart(now);
   const late = part === 'deep-night' || part === 'night';
   if (score >= 0.75) return late ? 'snug' : 'delighted';
-  if (score >= 0.60) return late ? 'sleepy' : 'content';
-  if (score >= 0.46) return late ? 'sleepy' : 'meh';
-  if (score >= 0.32) return 'grumpy';
+  if (score >= 0.56) return late ? 'sleepy' : 'content';
+  if (score >= 0.44) return late ? 'sleepy' : 'meh';
+  if (score >= 0.30) return 'grumpy';
   return 'miserable';
 }
 
