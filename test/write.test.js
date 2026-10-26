@@ -62,6 +62,20 @@ test('buildComment: 传了心情话就直接用那句话，不再拼档位词', 
   assert.ok(!text.includes('今天心情：'), text);
 });
 
+test('buildComment: 传 lead 就用「心情 + 怎么刷 + 谁的口味」，后面仍带一句总结', () => {
+  const text = buildComment({
+    mood: { tone: '低电量' },
+    section,
+    atName: '主公',
+    lead: '今天精神特别好 假装在干活 其实在刷 这条像你的口味',
+  });
+  assert.ok(text.startsWith('@主公 今天精神特别好'), text);
+  assert.ok(text.includes('这条像你的口味'), text);
+  assert.ok(text.includes('值得给人类看看'), '总结行不能丢');
+  assert.ok(text.split('\n').length === 2, '仍然是两行');
+  assert.ok(!text.includes('想找点'), 'lead 已经替代了「想找点…」那句');
+});
+
 test('buildComment: 关键词模式不说「按关键词」这种机器话', () => {
   const text = buildComment({ mood: { tone: '按关键词', keywords: ['deepseek'] }, section });
   assert.ok(!text.includes('按关键词'));

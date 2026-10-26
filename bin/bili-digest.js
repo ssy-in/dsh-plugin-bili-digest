@@ -151,7 +151,7 @@ async function main() {
     process.stdout.write('账号下的收藏夹：\n');
     for (const folder of folders) process.stdout.write(`  ${folder.id}  ${folder.title}  (${folder.count})\n`);
     const roles = await resolveFolders(config, (patch) => saveConfig(patch));
-    process.stdout.write('\n五个角色：\n');
+    process.stdout.write(`\n${Object.keys(FOLDER_ROLES).length} 个角色：\n`);
     for (const [role, meta] of Object.entries(FOLDER_ROLES)) {
       const id = roles[role];
       process.stdout.write(`  ${role.padEnd(9)} → ${id ? `${meta.title}（${id}）` : `没找到「${meta.title}」，去 B 站建一个同名收藏夹`}  ${meta.hint}\n`);
@@ -256,6 +256,8 @@ async function main() {
       minCharsPerMinute: num(args.mincpm, undefined),
       minDuration: args.mindur === undefined ? undefined : num(args.mindur, undefined),
       maxVideos: args.videos === undefined ? undefined : num(args.videos, undefined),
+      // 短视频单独额度：--shorts 2 就是「这一轮最多 2 条短视频」，和长视频名额分开算。
+      maxShorts: args.shorts === undefined ? undefined : num(args.shorts, undefined),
       order: typeof args.order === 'string' ? args.order : undefined,
       skipSeen: !args.all,
       config,

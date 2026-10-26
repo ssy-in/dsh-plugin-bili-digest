@@ -79,3 +79,18 @@ test('自己收藏时那句短评带「人类主人」，不 @ 他', () => {
 test('未知意图直接报错，不要静默返回空话', () => {
   assert.throws(() => pickLine('nope'), /未知的话术意图/);
 });
+
+test('归属二选一：人类口味说「你喜欢的」，我自己的口味说「我喜欢 + 让你看看」', async () => {
+  const { leadLine, attributionFor } = await import('../lib/core/voice.js');
+  const toHuman = leadLine({ phrase: '今天精神特别好', scene: '假装在干活 其实在刷', hit: 'human', seed: 0.1 });
+  assert.match(toHuman, /你喜欢的|你的口味|你会看/);
+  assert.doesNotMatch(toHuman, /让你看看/);
+
+  const toWhale = leadLine({ phrase: '今天精神特别好', scene: '假装在干活 其实在刷', hit: 'whale', seed: 0.1 });
+  assert.match(toWhale, /我自己|我挺喜欢|我喜欢的/);
+  assert.match(toWhale, /让你看看$/);
+  // 同一句不重复说两遍（心情和场景撞了就去掉场景）
+  const dup = leadLine({ phrase: '假装在干活 其实在刷', scene: '假装在干活 其实在刷', hit: 'human', seed: 0 });
+  assert.equal(dup.split('假装在干活').length - 1, 1, `重复了：${dup}`);
+  assert.ok(attributionFor('human').length > 0);
+});

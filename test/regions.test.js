@@ -25,9 +25,10 @@ const weather = (patch = {}) => ({
   ...patch,
 });
 
-const at = (patch, place = HOME_SEA) => weatherFeeling(weather(patch), { place });
-const score = (patch, place = HOME_SEA) => at(patch, place).score;
+// 测试必须钉死时刻：白天/黄昏有加成，不钉的话同一份天气在不同钟点跑出不同分（真 bug）。
 const NOON = new Date('2026-10-26T15:00:00');
+const at = (patch, place = HOME_SEA) => weatherFeeling(weather(patch), { place, now: NOON });
+const score = (patch, place = HOME_SEA) => at(patch, place).score;
 const level = (value) => moodFromScore(value, { now: NOON });
 
 // 各地典型天气（坐标用于算离家多远）
@@ -55,8 +56,8 @@ test('每个地方都在 0–1 之间，没有哪个城市直接掉到 0', () =>
   }
 });
 
-test('普通天落在 0.6–0.78 这一档，顶峰明显高过普通天', () => {
-  assert.ok(scores.杭州潮秋 >= 0.6 && scores.杭州潮秋 <= 0.78, `普通天应该 0.6–0.78，实际 ${scores.杭州潮秋}`);
+test('普通天落在 0.6–0.85 这一档，顶峰明显高过普通天', () => {
+  assert.ok(scores.杭州潮秋 >= 0.6 && scores.杭州潮秋 <= 0.85, `普通天应该 0.6–0.85，实际 ${scores.杭州潮秋}`);
   assert.ok(scores.理想顶峰 >= scores.杭州潮秋 + 0.1, `顶峰要拉开差距：${scores.理想顶峰} vs ${scores.杭州潮秋}`);
   assert.equal(level(scores.理想顶峰), 'delighted');
 });

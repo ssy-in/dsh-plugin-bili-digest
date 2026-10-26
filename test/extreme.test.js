@@ -30,7 +30,9 @@ function w(patch = {}) {
   };
 }
 
-const score = (patch, place = HOME) => weatherFeeling(w(patch), { place }).score;
+// 钉死时刻：白天/黄昏有加分，不钉的话同一份天气换个钟点跑出的分不一样（真 bug）。
+const PIN = new Date('2026-10-26T10:00:00');
+const score = (patch, place = HOME) => weatherFeeling(w(patch), { place, now: PIN }).score;
 
 test('谷底：热 + 暴晒 + 干 + 大风 + 雷 + 离家两千公里 → 分数落到底', () => {
   const worst = score(

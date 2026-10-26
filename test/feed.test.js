@@ -76,7 +76,7 @@ test('按口味取词：按权重抽样、大小写不重复；冷启动判断',
       大肥鱼: { fast: 3, slow: 3, seen: 6, likes: 2, updatedAt: now.toISOString() },
       deepseek: { fast: 2, slow: 2, seen: 4, likes: 1, updatedAt: now.toISOString() },
       DeepSeek: { fast: 1, slow: 1, seen: 2, likes: 0, updatedAt: now.toISOString() },
-      cos: { fast: 1, slow: 1, seen: 2, likes: 0, updatedAt: now.toISOString() },
+      显卡: { fast: 1, slow: 1, seen: 2, likes: 0, updatedAt: now.toISOString() },
       绝区零: { fast: 1, slow: 1, seen: 2, likes: 0, updatedAt: now.toISOString() },
     },
     ups: {},
@@ -91,5 +91,5 @@ test('按口味取词：按权重抽样、大小写不重复；冷启动判断',
   assert.ok(seen.size > 1, '每轮不该都是同一组词');
   const cold = coldState({ state, now });
   assert.equal(cold.cold, true, '只有两个非先验标签，还算冷');
-  assert.ok(cold.warm.includes('cos'));
+  assert.ok(cold.warm.includes('显卡'));
 });

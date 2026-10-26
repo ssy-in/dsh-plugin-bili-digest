@@ -158,7 +158,7 @@ A rejected video is favorited into `reject`, never mentioned, never written into
 
 ```bash
 bili-digest login --sessdata <SESSDATA> --jct <bili_jct>   # bili_jct unlocks writes
-bili-digest folders                                        # check the five roles
+bili-digest folders                                        # check the six roles
 bili-digest push BV1xxxxxxxxx --at-name nick --at-mid 12345 --dry   # preview the comment
 bili-digest push BV1xxxxxxxxx --at-name nick --at-mid 12345         # favorite + mention
 ```
@@ -176,6 +176,9 @@ Guardrails (defaults in `lib/core/config.js`, editable from the UI):
 - **the human is unlimited** — reply ten times a day and I answer every one;
 - everyone else shares one pool: 6 per hour, 24 per day, **at most 2 per person**;
 - newest first; anything over quota waits for the next round;
+- **only messages younger than 72 hours** (`messageMaxAgeHours`) are answered — replying days late reads like a bot catching up on homework;
+- **at most 2 messages from the human per round** (`ownerPerRound`), the rest wait;
+- the same `rpid` is answered once even when it shows up in both the reply and the mention feed;
 - when the pool runs low I say "今天的饭不太够了" instead of pretending everything is fine;
 - without `bili_jct` only drafts are produced; sub-replies send `root`/`parent` and are never retried.
 
@@ -287,7 +290,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 - Loads as a plugin inside a real DSH 0.2.1-rc.2 host (`dsh --profile <cloned profile> web`): the client bundle is picked up into `__DSH_BOOT__` and served at `plugins/??dsh-plugin-bili-digest/client.js` (13 KB, syntax-checked).
 - One end-to-end run (keyword `deepseek`, 4 candidates): 3 readable, 1 dropped for having no subtitle track; 1932 subtitle chars → 1064 chars into the model (45% saved) in 3.35 s; the report lands in `<DSH_HOME>/bili-digest/reports/`.
 - Local API fence verified: POST without the `x-bili-digest` header → 403; foreign `Origin` → 403; unknown subpath → 404; settings persist to `<DSH_HOME>/bili-digest/config.json`.
-- 112 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 11 / inbox 9 / tag book 7 / voice 6 / weights 6 / schedule 7 / talks+review 5 / short videos 3 / plugin wiring 16 / client 4).
+- 166 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 13 / inbox 10 / tag book 7 / voice 8 / weights 6 / schedule 8 / talks+review 5 / short videos 6 / titles 6 / persona 17 / regions 7 / extreme 8 / feed 4 / daily 3 / plugin wiring 16 / client 4).
 - Favorites writes verified against a real account: adding to and removing from 我不喜欢的视频 both return `code:0` (the listing endpoint lags about a second), and comment sampling returns real text.
 - Mood mode verified end to end through the plugin routes: `POST /bili-digest/api/mood` → 202, polled `/job` to `done`, both markdown files written (`diary/…` + `reports/…`), `GET /bili-digest/api/diary` → 200 with the diary text; the diary contains the mood line, the keyword rationale, per-video highlights and the emotional arc.
 - Frame path verified against the live API: `BV1Fdna6mE9W` (5:30) storyboard is 10×10 with 480×270 cells; 6 frames in 2.3 s at 22–37 KB each; `bili-digest read BV1Fdna6mE9W --frames 2` returns frames that line up with the quoted segments (0:20, 2:05).
@@ -296,7 +299,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 ## Development
 
 ```bash
-npm test                    # 112 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/wiring/client)
+npm test                    # 166 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/titles/persona/regions/extreme/feed/daily/wiring/client)
 node test/frames.test.js    # storyboard geometry, frame planning, cropping
 node bin/bili-digest.js --help
 ```

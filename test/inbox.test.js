@@ -14,7 +14,9 @@ const { readTagBook } = await import('../lib/core/tagbook.js');
 const ownerMid = '9134117';
 
 function msg(over = {}) {
-  return { id: `reply:${over.rpid || '1'}`, kind: 'reply', mid: '1001', nickname: '路人甲', text: '这条讲得不错', ctime: 100, bvid: 'BV1aaaaaaaaa', oid: '111', rpid: '1', root: '1', ...over };
+  // 默认「一分钟前」：消息中心只回新消息，写死 100（1970 年）会被「太旧了」挡掉。
+  const fresh = Math.floor(Date.now() / 1000) - 60;
+  return { id: `reply:${over.rpid || '1'}`, kind: 'reply', mid: '1001', nickname: '路人甲', text: '这条讲得不错', ctime: fresh, bvid: 'BV1aaaaaaaaa', oid: '111', rpid: '1', root: '1', ...over };
 }
 
 test('normalize: 从消息中心条目里取到能回评论所需的字段', () => {
@@ -65,11 +67,12 @@ test('pickPending: 从新到旧、同一个人最多两次、已回过的不再�
     hourLeft: LIMITS.otherPerHour,
     dayLeft: LIMITS.otherPerDay,
   };
+  const base = Math.floor(Date.now() / 1000) - 120;
   const messages = [
-    msg({ rpid: '11', mid: '3003', ctime: 300 }),
-    msg({ rpid: '10', mid: '3003', ctime: 200 }),
-    msg({ rpid: '8', mid: '3003', ctime: 150 }),
-    msg({ rpid: '9', mid: '4004', ctime: 100 }),
+    msg({ rpid: '11', mid: '3003', ctime: base }),
+    msg({ rpid: '10', mid: '3003', ctime: base - 10 }),
+    msg({ rpid: '8', mid: '3003', ctime: base - 20 }),
+    msg({ rpid: '9', mid: '4004', ctime: base - 30 }),
   ];
   const { picked, skipped } = pickPending(messages, fresh, ownerMid);
   // 3003 有 3 条，只回前两条；4004 正常回。
@@ -113,6 +116,22 @@ test('pickPending: 配额用完就整批留给下一轮；但人类的消息照�
   const owner = pickPending([msg({ rpid: '22', mid: ownerMid })], quota, ownerMid);
   assert.equal(owner.picked.length, 1, '人类不限额');
   assert.equal(owner.picked[0].toOwner, true);
+});
+
+test('pickPending: 老消息不追着回，人类一轮最多接几条', () => {
+  const now = new Date();
+  const quota = { hourUsed: 0, dayUsed: 0, perPerson: {}, limits: LIMITS, hourLeft: LIMITS.otherPerHour, dayLeft: LIMITS.otherPerDay };
+  const old = msg({ rpid: '41', mid: '8888', ctime: Math.floor(now.getTime() / 1000) - 4 * 24 * 3600 });
+  const fresh = msg({ rpid: '42', mid: '8889' });
+  const mixed = pickPending([old, fresh], quota, ownerMid, { now, maxAgeHours: 72 });
+  assert.deepEqual(mixed.picked.map((item) => item.rpid), ['42']);
+  assert.match(mixed.skipped.find((item) => item.rpid === '41').reason, /太久了/);
+
+  // 人类一口气回了好几条：一轮只接两条，剩下的留到下一轮。
+  const owners = ['51', '52', '53'].map((rpid) => msg({ rpid, mid: ownerMid }));
+  const capped = pickPending(owners, quota, ownerMid, { now, ownerPerRound: 2 });
+  assert.deepEqual(capped.picked.map((item) => item.rpid), ['51', '52']);
+  assert.match(capped.skipped.find((item) => item.rpid === '53').reason, /留到下一轮/);
 });
 
 test('noteUnclear: 把人类的话和我的不确定写进 review.json 与当天日报', () => {

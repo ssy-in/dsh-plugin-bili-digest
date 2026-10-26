@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-bili-digest",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "有字幕的只把关键段落交给模型，没有字幕的改用分镜截图；鲸鲸和人类主人各自一套心情与口味",
   "type": "module",
   "main": "lib/index.js",

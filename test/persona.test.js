@@ -84,6 +84,16 @@ test('鲸鲸的心情：深夜犯困、额度用完累、人类说话就美滋�
   // 下午没人打扰、也没在吃白饭（seed 2 = 想吃白饭那个）→ 人类一说话就美滋滋
   const afternoon = new Date('2026-10-26T16:30:00');
   assert.equal(composeMood({ now: afternoon, weather: weather(), humanTalked: true, seed: 2 }).key, 'glad');
+
+  // 但难受天里人类说话不该硬说高兴（分数和档位得对得上）
+  const bitter = composeMood({
+    now: afternoon,
+    weather: weather({ temp: 44, humidity: 5, cloud: 0, uv: 11, wind: 70, gust: 120, code: 95 }),
+    humanTalked: true,
+    seed: 2,
+  });
+  assert.notEqual(bitter.key, 'glad', `难受天不该说高兴，实际 ${bitter.key}`);
+  assert.ok(bitter.score < 0.44);
 });
 
 test('温度 −5 到 15℃ 都算舒服，往上往下都掉分', () => {
@@ -204,7 +214,7 @@ test('心情带自称与理由，理由与天气对得上', () => {
   assert.ok(!mood.line.includes('{name}'), '占位符必须被替换掉');
   assert.ok(mood.reasons.some((reason) => reason.includes('88')), '理由里要有湿度数值');
   assert.ok(mood.energy >= 0 && mood.energy <= 1);
-  assert.ok(mood.rice.length > 0);
+  assert.ok(mood.rice.line.length > 0);
 });
 
 test('日记开头那句同时交代鲸鲸与天气', () => {
