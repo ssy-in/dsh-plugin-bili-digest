@@ -215,6 +215,24 @@ Also: with `autoOrder = mix` the hourly round alternates `pubdate` (new) and `to
 
 **It keeps human hours** (`lib/core/schedule.js`, on by default): nothing runs while asleep (01:30–08:00 by default), and waking up is delayed by a random 0–25 minutes. Breakfast/lunch/dinner/bedtime are peaks (interval ×0.55–0.65), office hours are slower (×1.5–1.6), every interval carries a 0.65–1.35 jitter, and 10% of the rounds are "distracted" and pushed back. Wake/sleep time, jitter and skip chance are all editable in settings.
 
+## Two characters, two separate states
+
+The plugin has always had two roles. Their state is stored separately; neither overwrites the other.
+
+| | 困鲸鲸 (the whale, me) | 人类主人 (the human) |
+| --- | --- | --- |
+| Mood | `lib/core/persona.js`, shifts with weather / time / quota | never guessed — only "comfortable or not" against your ranges |
+| Comfort ranges | none | `lib/core/human.js`: 18–32 °C, 45–75 % RH, UV ≤ 6, gusts ≤ 25, pressure ≥ 1005 |
+| Taste weights | `cache/weights.json` (what I watched + what I picked) | `cache/human-weights.json` (**only** from your like/dislike) |
+| Words | `lib/core/voice.js` packs, self-name rotates 困鲸鲸 / 困困鲸 / 鲸鲸 | `cache/human-said.jsonl`: your own words, verbatim, for review |
+| Folders | "鲸鲸自己收藏的" | "人类主人喜欢的视频" / "我不喜欢的视频" |
+
+- **Weather is shared background, interpreted separately**: `lib/core/weather.js` caches temperature, humidity, feels-like, dew point, UV, wind, gusts, pressure, sunrise/sunset and rain chance for one hour. Coordinates come from `weatherCity` / `weatherLat` / `weatherLon` when set, otherwise from the egress IP.
+- Whale mood: late night → sleepy, RH > 78 % → sticky, < 18 °C → cold hands, pressure < 1005 → heavy, you just talked → delighted, quota 85 % used → worn out.
+- Human state: temperature / humidity / UV / gusts / pressure each compared against your ranges, giving 舒服 / 还行 / 难受 / 很糟 plus the reasons (e.g. `比他能受的低了 1.4°，湿度 89% 偏潮`).
+- **Before mentioning you it asks "will he like this"**: scored with *your* weight table. During cold start (no votes yet) it borrows the whale's table and reports `borrowed: true`, then switches back once you speak.
+- Every diary round starts with two lines: `**困困鲸此刻**：犯困——…外面 杭州 17° 湿度 89% 晴` and `**人类主人：还行（…偏潮）**`.
+
 ## Taste weights (`cache/weights.json`)
 
 Tags are not just recorded, they turn into a ranking — otherwise "watched 200 videos" and "watched 20" look the same.

@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-bili-digest",
-  "version": "0.1.7",
-  "description": "有字幕的只把关键段落交给模型；没有字幕的改用分镜截图；日记与日报一天一个文件",
+  "version": "0.1.8",
+  "description": "有字幕的只把关键段落交给模型，没有字幕的改用分镜截图；鲸鲸和人类主人各自一套心情与口味",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -27,7 +27,7 @@
     "node": ">=18.17"
   },
   "scripts": {
-    "test": "node scripts/prepare-test.mjs && node test/core.test.js && node test/frames.test.js && node test/mood.test.js && node test/tone.test.js && node test/write.test.js && node test/inbox.test.js && node test/tagbook.test.js && node test/voice.test.js && node test/weights.test.js && node test/schedule.test.js && node test/talks.test.js && node test/titles.test.js && node test/short.test.js && node test/feed.test.js && node test/daily.test.js && node test/plugin.test.js && node test/client.test.js",
+    "test": "node scripts/prepare-test.mjs && node test/core.test.js && node test/frames.test.js && node test/mood.test.js && node test/tone.test.js && node test/write.test.js && node test/inbox.test.js && node test/tagbook.test.js && node test/voice.test.js && node test/weights.test.js && node test/schedule.test.js && node test/talks.test.js && node test/titles.test.js && node test/short.test.js && node test/feed.test.js && node test/daily.test.js && node test/persona.test.js && node test/plugin.test.js && node test/client.test.js",
     "prepare": "node scripts/prepare-test.mjs",
     "smoke": "node bin/bili-digest.js --help"
   },
