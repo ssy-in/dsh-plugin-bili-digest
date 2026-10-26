@@ -47,11 +47,19 @@ test('oneLine: 取第一句有意义的，长句退到逗号', () => {
 test('buildComment: 心情 + 为什么 + 一句话 + @', () => {
   const text = buildComment({ mood: { tone: '低电量', keywords: ['轻松', '治愈'] }, section, atName: '主公' });
   assert.ok(text.startsWith('@主公 '));
-  assert.ok(text.includes('今天心情：低电量'));
+  assert.ok(text.includes('今天低电量'));
   assert.ok(text.includes('轻松、治愈'));
   assert.ok(text.includes('值得给人类看看'));
   assert.ok(!text.includes('主人'), '不该再叫主人');
   assert.ok(text.split('\n').length === 2, '应当是两行：心情一行、总结一行');
+  // 心情值不外显：评论里不能出现分数。
+  assert.ok(!/心情分|0\.\d{2}/.test(text), `评论不该出现分数：${text}`);
+});
+
+test('buildComment: 传了心情话就直接用那句话，不再拼档位词', () => {
+  const text = buildComment({ mood: { tone: '低电量', keywords: [] }, section, atName: '主公', phrase: '今天有点蔫' });
+  assert.ok(text.includes('今天有点蔫'), text);
+  assert.ok(!text.includes('今天心情：'), text);
 });
 
 test('buildComment: 关键词模式不说「按关键词」这种机器话', () => {

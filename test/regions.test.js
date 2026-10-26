@@ -69,9 +69,10 @@ test('大部分地方都是"不错以上"，只有真极端才掉到很差', () 
 });
 
 test('大陆温度跨度：−30℃ 和 40℃ 都难受，但都不归零', () => {
-  assert.ok(scores.漠河极寒 < 0.45, `−30℃ 不该舒服：${scores.漠河极寒}`);
+  // 温度扣分收小 + 适应期补分后，极端温度不再掉到谷底，只要求"进不了不错档"。
+  assert.ok(scores.漠河极寒 < 0.56, `−30℃ 不该舒服：${scores.漠河极寒}`);
   assert.ok(scores.漠河极寒 > 0.05, `−30℃ 也别归零：${scores.漠河极寒}`);
-  assert.ok(scores.广东酷暑 < 0.4, `40℃ 不该舒服：${scores.广东酷暑}`);
+  assert.ok(scores.广东酷暑 < 0.56, `40℃ 不该舒服：${scores.广东酷暑}`);
   assert.ok(scores.广东酷暑 > 0.05, `40℃ 也别归零：${scores.广东酷暑}`);
   assert.notEqual(level(scores.漠河极寒), 'delighted');
   assert.notEqual(level(scores.广东酷暑), 'delighted');

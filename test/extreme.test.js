@@ -32,13 +32,14 @@ function w(patch = {}) {
 
 const score = (patch, place = HOME) => weatherFeeling(w(patch), { place }).score;
 
-test('谷底：热 + 暴晒 + 干 + 大风 + 雷 + 离家两千公里 → 分数接近 0', () => {
+test('谷底：热 + 暴晒 + 干 + 大风 + 雷 + 离家两千公里 → 分数落到底', () => {
   const worst = score(
     { temp: 40, humidity: 10, cloud: 0, rain: 20, code: 95, uv: 11, wind: 70, gust: 120, isDay: true },
     FAR,
   );
   assert.ok(worst >= 0, '不能是负的');
-  assert.ok(worst <= 0.06, `谷底应该贴近 0，实际 ${worst}`);
+  // 加了"待久了会适应"的补分之后，谷底不再钉在 0 附近，但仍要明显低于任何舒服区间。
+  assert.ok(worst <= 0.15, `谷底应该落到底，实际 ${worst}`);
   assert.equal(moodFromScore(worst, { now: new Date('2026-10-26T10:00:00') }), 'miserable');
 });
 

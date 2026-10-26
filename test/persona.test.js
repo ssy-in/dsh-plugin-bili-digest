@@ -213,6 +213,7 @@ test('日记开头那句同时交代鲸鲸与天气', () => {
   assert.ok(line.includes('此刻'), line);
   assert.ok(line.includes('杭州'));
   assert.ok(line.includes('湿度 60%'));
-  assert.ok(line.includes('心情分'));
+  // 心情值不外显：日记里也只说人话，不报分数。
+  assert.ok(!line.includes('心情分'), `日记不该出现分数：${line}`);
   assert.equal(renderMoodLine(undefined, weather()), '');
 });
