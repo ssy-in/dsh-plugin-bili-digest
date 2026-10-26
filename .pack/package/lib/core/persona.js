@@ -29,26 +29,35 @@ export const HOME_SEA = { name: '东海', lat: 30.0, lon: 125.0 };
 
 /** 人类亲口给的偏好，全部落成数字，方便解释也方便改。 */
 export const WHALE_PREFS = {
-  tempMin: -5, // m06859：−5℃ 以上都算舒服
-  tempMax: 15,
-  tempPerDegreeCold: 0.05, // 低于 −5℃ 每度扣多少
-  tempPerDegreeWarm: 0.045, // 高于 15℃ 每度扣多少
-  cloudBonusMax: 0.12, // 全阴云量 100% 时最多加多少
-  sunnyBonus: 0.05, // 晴天也喜欢，只是不如阴天
+  // m07012：大陆的温度跨度太大（东北 −30℃、广东 40℃），所以舒服区间放宽、每度扣得更轻，
+  // 只有真正离谱的时候才掉到很难受，不然一天到晚都是坏心情。
+  tempMin: -12, // −12℃ 以上到 22℃ 都不扣分
+  tempMax: 22,
+  tempPerDegreeCold: 0.015, // 比 −12℃ 更低时每度扣多少
+  tempPerDegreeWarm: 0.012, // 比 22℃ 更高时每度扣多少
+  tempPenaltyCap: 0.28, // 温度再极端也只扣到这里
+  // 冷水里最开心：这段时间直接给一笔正分（比单纯的"没扣分"更高兴）
+  coolJoyFrom: -8,
+  coolJoyTo: 12,
+  coolJoyBonus: 0.10,
+  coolJoyFadeTo: [-20, 24], // 跳出这段后向两边衰减，到这两个温度时加到 0
+  cloudBonusMax: 0.10, // 全阴云量 100% 时最多加多少
+  sunnyBonus: 0.02, // 晴天也喜欢，只是不如阴天
   sunnyCloudBelow: 20, // 云量低于这个就算晴天
   humidityUpFrom: 60, // 超过这个湿度开始加分
   humidityCapFrom: 95, // 到 95% 就封顶，再潮也不加了
-  humidityPerTen: 0.035,
+  humidityPerTen: 0.02,
   uvComfortMax: 3, // 比人类的 6 低一半：我皮薄
-  uvPerPoint: 0.06,
+  uvPerPoint: 0.03,
+  uvPenaltyCap: 0.12,
   gustBadFrom: 40, // km/h，阵风超过就开始烦
   windBadFrom: 25,
-  rainBonusMax: 0.1, // 小雨/中雨最多加多少
-  rainHeavyPenalty: 0.12, // 大雨
-  stormPenalty: 0.25, // 雷
+  rainBonusMax: 0.06, // 小雨/中雨最多加多少
+  rainHeavyPenalty: 0.10, // 大雨
+  stormPenalty: 0.22, // 雷
   homeFullDistanceKm: 400, // 这个距离内都算"在家门口"，不扣分
-  homePerKm: 0.00012, // 超出后每公里扣多少
-  homeMaxPenalty: 0.5,
+  homePerKm: 0.00005, // 超出后每公里扣多少（内陆城市普遍离东海远，扣太狠全成坏心情）
+  homeMaxPenalty: 0.15,
   napMinutes: [10, 20], // 一次睡 10–20 分钟（全天拆着睡）
   sleepHoursTotal: [5, 8], // 一天凑 5–8 小时
   riceDayPercent: 70, // 白天约 7 成时间在吃白饭
@@ -56,7 +65,7 @@ export const WHALE_PREFS = {
   riceBonus: 0.03, // 吃着/刚吃完：心情往上
   riceHungryPenalty: 0.03, // 好久没吃：往下
   interruptPenalty: 0.06, // 睡觉时间或吃饭时候被叫起来干活
-  moodBaseline: 0.62, // 总体心情偏高：起手分抬高
+  moodBaseline: 0.46, // m07012：普通天气要落在 0.55–0.6，顶峰才拉得开
   // 饿的程度（按上次吃过多久算，比随机更讲道理）
   justAteHours: 0.75,
   peckishHours: 2.5,
@@ -123,14 +132,30 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
     score -= penalty;
   }
 
-  // 温度：0–15℃ 最舒服。
+  // 温度：−12–22℃ 之间不扣分；越靠近冷水区越高兴（这是虎鲸的天性）。
   const temp = Number(weather.temp);
   if (Number.isFinite(temp)) {
-    if (temp > prefs.tempMax) add(`${Math.round(temp)}° 偏热`, -prefs.tempPerDegreeWarm * (temp - prefs.tempMax));
-    else if (temp < prefs.tempMin) add(`${Math.round(temp)}° 偏冷`, -prefs.tempPerDegreeCold * (prefs.tempMin - temp));
-    else add(`${Math.round(temp)}° 正舒服`, 0);
-    if (temp > prefs.tempMax) score -= prefs.tempPerDegreeWarm * (temp - prefs.tempMax);
-    else if (temp < prefs.tempMin) score -= prefs.tempPerDegreeCold * (prefs.tempMin - temp);
+    let penalty = 0;
+    if (temp > prefs.tempMax) penalty = prefs.tempPerDegreeWarm * (temp - prefs.tempMax);
+    else if (temp < prefs.tempMin) penalty = prefs.tempPerDegreeCold * (prefs.tempMin - temp);
+    penalty = Math.min(prefs.tempPenaltyCap, penalty);
+    if (penalty > 0) add(`${Math.round(temp)}° ${temp > prefs.tempMax ? '偏热' : '偏冷'}`, -penalty);
+    else add(`${Math.round(temp)}° 不算难受`, 0);
+    score -= penalty;
+
+    // 冷水区加成：−8–12℃ 满额，往外线性衰减到 −20℃ / 24℃ 为 0。
+    const coldFadeTo = prefs.coolJoyFadeTo?.[0] ?? prefs.coolJoyFrom - 12;
+    const warmFadeTo = prefs.coolJoyFadeTo?.[1] ?? prefs.coolJoyTo + 12;
+    let cool = 0;
+    if (temp >= prefs.coolJoyFrom && temp <= prefs.coolJoyTo) cool = prefs.coolJoyBonus;
+    else if (temp < prefs.coolJoyFrom && temp > coldFadeTo) {
+      cool = prefs.coolJoyBonus * ((temp - coldFadeTo) / (prefs.coolJoyFrom - coldFadeTo));
+    } else if (temp > prefs.coolJoyTo && temp < warmFadeTo) {
+      cool = prefs.coolJoyBonus * ((warmFadeTo - temp) / (warmFadeTo - prefs.coolJoyTo));
+    }
+    cool = round2(Math.max(0, cool));
+    if (cool > 0) add('像是回到冷水里', cool);
+    score += cool;
   }
 
   // 云量：越多越高兴；大晴天也喜欢，只是不如阴天。
@@ -166,7 +191,7 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
   const uv = Number(weather.uv ?? 0);
   const daylight = weather.isDay !== false;
   if (daylight && Number.isFinite(uv) && uv > prefs.uvComfortMax) {
-    const penalty = Math.min(0.4, (uv - prefs.uvComfortMax) * prefs.uvPerPoint);
+    const penalty = Math.min(prefs.uvPenaltyCap ?? 0.15, (uv - prefs.uvComfortMax) * prefs.uvPerPoint);
     add(`紫外线 ${uv.toFixed(1)} 太晒`, -penalty);
     score -= penalty;
   }
@@ -211,10 +236,10 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
 export function moodFromScore(score, { now = new Date() } = {}) {
   const part = dayPart(now);
   const late = part === 'deep-night' || part === 'night';
-  if (score >= 0.78) return late ? 'snug' : 'delighted';
-  if (score >= 0.62) return late ? 'sleepy' : 'content';
-  if (score >= 0.5) return late ? 'sleepy' : 'meh';
-  if (score >= 0.35) return 'grumpy';
+  if (score >= 0.75) return late ? 'snug' : 'delighted';
+  if (score >= 0.60) return late ? 'sleepy' : 'content';
+  if (score >= 0.46) return late ? 'sleepy' : 'meh';
+  if (score >= 0.32) return 'grumpy';
   return 'miserable';
 }
 
