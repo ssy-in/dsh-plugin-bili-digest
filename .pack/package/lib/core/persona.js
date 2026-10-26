@@ -22,12 +22,15 @@ export const HOME_SEA = { name: '东海', lat: 30.0, lon: 125.0 };
 
 /** 人类亲口给的偏好，全部落成数字，方便解释也方便改。 */
 export const WHALE_PREFS = {
-  tempMin: 0,
+  tempMin: -5, // m06859：−5℃ 以上都算舒服
   tempMax: 15,
-  tempPerDegreeCold: 0.05, // 低于 0℃ 每度扣多少
+  tempPerDegreeCold: 0.05, // 低于 −5℃ 每度扣多少
   tempPerDegreeWarm: 0.045, // 高于 15℃ 每度扣多少
   cloudBonusMax: 0.12, // 全阴云量 100% 时最多加多少
+  sunnyBonus: 0.05, // 晴天也喜欢，只是不如阴天
+  sunnyCloudBelow: 20, // 云量低于这个就算晴天
   humidityUpFrom: 60, // 超过这个湿度开始加分
+  humidityCapFrom: 95, // 到 95% 就封顶，再潮也不加了
   humidityPerTen: 0.035,
   uvComfortMax: 3, // 比人类的 6 低一半：我皮薄
   uvPerPoint: 0.06,
@@ -39,10 +42,14 @@ export const WHALE_PREFS = {
   homeFullDistanceKm: 400, // 这个距离内都算"在家门口"，不扣分
   homePerKm: 0.00012, // 超出后每公里扣多少
   homeMaxPenalty: 0.5,
-  napMinutes: [10, 20], // 一次睡 10–20 分钟
+  napMinutes: [10, 20], // 一次睡 10–20 分钟（全天拆着睡）
   sleepHoursTotal: [5, 8], // 一天凑 5–8 小时
   riceDayPercent: 70, // 白天约 7 成时间在吃白饭
   riceNightPercent: 50, // 晚上约 5 成
+  riceBonus: 0.03, // 吃着/刚吃完：心情往上
+  riceHungryPenalty: 0.03, // 好久没吃：往下
+  interruptPenalty: 0.06, // 睡觉时间或吃饭时候被叫起来干活
+  moodBaseline: 0.62, // 总体心情偏高：起手分抬高
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -86,7 +93,7 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
     return { ok: false, score: 0.5, parts: [], notes: ['天气没拿到'] };
   }
 
-  let score = 0.55; // 天气没特别好的时候的底子
+  let score = prefs.moodBaseline; // 总体心情偏高：起手就在均线以上
 
   // 离家多远：海岸边不走动的话，杭州离东海中心约 470 km，稍微有点远。
   const here = place && Number.isFinite(place.lat) ? place : weather.lat && weather.lon ? { lat: weather.lat, lon: weather.lon } : undefined;
@@ -109,17 +116,21 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
     else if (temp < prefs.tempMin) score -= prefs.tempPerDegreeCold * (prefs.tempMin - temp);
   }
 
-  // 云量：越多越高兴（晴天也喜欢，但满云最舒服）。
+  // 云量：越多越高兴；大晴天也喜欢，只是不如阴天。
   const cloud = Number(weather.cloud);
+  const code = Number(weather.code);
   if (Number.isFinite(cloud)) {
     const bonus = (clamp(cloud, 0, 100) / 100) * prefs.cloudBonusMax;
     add(`云量 ${Math.round(cloud)}%`, bonus);
     score += bonus;
+    if (cloud < prefs.sunnyCloudBelow && (code === 0 || code === 1)) {
+      add('大晴天', prefs.sunnyBonus);
+      score += prefs.sunnyBonus;
+    }
   }
 
   // 雨：小雨 < 中雨 < 大雨。中雨最开心，大雨和雷反过来。
   const rain = Number(weather.rain) || 0;
-  const code = Number(weather.code);
   const isStorm = code === 95 || code === 96 || code === 99;
   if (isStorm) {
     add('打雷', -prefs.stormPenalty);
@@ -157,10 +168,11 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
     score -= penalty;
   }
 
-  // 湿度：过了 60% 就往上加（潮一点反而舒服）。
+  // 湿度：过了 60% 就往上加（潮一点反而舒服），到 95% 封顶。
   const humidity = Number(weather.humidity);
   if (Number.isFinite(humidity) && humidity > prefs.humidityUpFrom) {
-    const bonus = ((humidity - prefs.humidityUpFrom) / 10) * prefs.humidityPerTen;
+    const effective = Math.min(humidity, prefs.humidityCapFrom);
+    const bonus = ((effective - prefs.humidityUpFrom) / 10) * prefs.humidityPerTen;
     add(`湿度 ${Math.round(humidity)}%`, bonus);
     score += bonus;
   }
@@ -168,14 +180,14 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
   return { ok: true, score: round2(clamp(score, 0, 1)), parts, notes: parts.map((p) => `${p.label} ${p.delta > 0 ? '+' : ''}${p.delta}`) };
 }
 
-/** 分数 → 心情档位。 */
+/** 分数 → 心情档位（起手分 0.62，所以档位线整体上移，平时都在均线以上）。 */
 export function moodFromScore(score, { now = new Date() } = {}) {
   const part = dayPart(now);
   const late = part === 'deep-night' || part === 'night';
-  if (score >= 0.8) return late ? 'snug' : 'delighted';
-  if (score >= 0.65) return late ? 'sleepy' : 'content';
-  if (score >= 0.45) return late ? 'sleepy' : 'meh';
-  if (score >= 0.3) return 'grumpy';
+  if (score >= 0.78) return late ? 'snug' : 'delighted';
+  if (score >= 0.62) return late ? 'sleepy' : 'content';
+  if (score >= 0.5) return late ? 'sleepy' : 'meh';
+  if (score >= 0.35) return 'grumpy';
   return 'miserable';
 }
 
@@ -190,26 +202,59 @@ export const MOODS = {
   miserable: { label: '很想家', line: '{name}想回东海 这里又热又吵' },
   glad: { label: '美滋滋', line: '人类刚跟{name}说话 {name}正高兴' },
   tired: { label: '累趴', line: '今天说话说太多了 {name}快没力气' },
+  woken: { label: '被叫醒了', line: '现在还是{name}的睡觉时间 人类就叫我上班' },
+  rice_call: { label: '嘴里有饭', line: '{name}正吃着白饭 就让我干活' },
 };
 
-/** 吃白饭：白天约 7 成时间，晚上约 5 成。 */
-export function riceState(now = new Date(), prefs = WHALE_PREFS) {
+/** 吃白饭的几种情形：说得出「刚吃完 / 好久没吃 / 有点饿 / 想吃白饭」，分数也跟着上下。 */
+export const RICE_STATES = {
+  just_ate: { line: '刚吃完一碗白饭', deltaFrom: 'bonus', morning: '刚吃完早饭的白饭' },
+  eating: { line: '一边吃白饭一边看', deltaFrom: 'bonus' },
+  long_time: { line: '好久没吃白饭了', deltaFrom: 'hungry' },
+  hungry: { line: '有点饿了 想吃白饭', deltaFrom: 'hungry' },
+  craving: { line: '有点想吃白饭了', deltaFrom: 'neutral' },
+};
+
+const RICE_ORDER = ['eating', 'just_ate', 'craving', 'long_time', 'hungry'];
+
+/**
+ * 吃白饭：白天约 7 成时间、晚上约 5 成；「吃着/刚吃完」加分，「好久没吃/饿了」扣分。
+ * seed 固定时结果固定，方便测试。
+ */
+export function riceState(now = new Date(), prefs = WHALE_PREFS, seed) {
   const part = dayPart(now);
   const night = part === 'night' || part === 'deep-night';
   const percent = night ? prefs.riceNightPercent : prefs.riceDayPercent;
-  return { part, night, percent, line: night ? '嘴里还留着白饭味' : '边看边吃白饭' };
+  const pick = Number.isFinite(seed) ? Math.abs(Math.trunc(seed)) % RICE_ORDER.length : Math.floor(Math.random() * RICE_ORDER.length);
+  const key = RICE_ORDER[pick];
+  const entry = RICE_STATES[key];
+  let delta = 0;
+  if (entry.deltaFrom === 'bonus') delta = prefs.riceBonus;
+  else if (entry.deltaFrom === 'hungry') delta = -prefs.riceHungryPenalty;
+  const eating = key === 'eating' || key === 'just_ate';
+  return {
+    part,
+    night,
+    percent,
+    key,
+    eating,
+    delta: round2(delta),
+    line: night && eating ? '嘴里还留着白饭味' : entry.line,
+  };
 }
 
-/** 睡觉：一次 10–20 分钟，一天凑 5–8 小时。 */
-export function sleepState(now = new Date(), prefs = WHALE_PREFS) {
+/** 睡觉：全天拆成 10–20 分钟的小睡，一天凑 5–8 小时。 */
+export function sleepState(now = new Date(), prefs = WHALE_PREFS, seed) {
   const part = dayPart(now);
   const napWindow = part === 'deep-night' || part === 'night' || part === 'noon';
   const [minNap, maxNap] = prefs.napMinutes;
   const [minTotal, maxTotal] = prefs.sleepHoursTotal;
+  const span = maxNap - minNap;
+  const napMinutes = Number.isFinite(seed) ? minNap + (Math.abs(Math.trunc(seed)) % (span + 1)) : Math.round(minNap + Math.random() * span);
   return {
     part,
     napWindow,
-    napMinutes: Math.round(minNap + Math.random() * (maxNap - minNap)),
+    napMinutes,
     totalHours: `${minTotal}–${maxTotal}`,
   };
 }
@@ -226,10 +271,22 @@ export function sleepState(now = new Date(), prefs = WHALE_PREFS) {
  */
 export function composeMood({ now = new Date(), weather, comfort, quotaUsed = 0, humanTalked = false, seed } = {}) {
   const feeling = weatherFeeling(weather, { now });
-  let key = moodFromScore(feeling.score, { now });
-  const reasons = feeling.notes.slice(0, 4);
+  const rice = riceState(now, WHALE_PREFS, seed);
+  const sleep = sleepState(now, WHALE_PREFS, seed);
+  const riceNotes = rice.delta ? [`${rice.line} ${rice.delta > 0 ? '+' : ''}${rice.delta}`] : [rice.line];
+  const score = round2(clamp(feeling.score + rice.delta, 0, 1));
+  let key = moodFromScore(score, { now });
+  const reasons = [...riceNotes, ...feeling.notes].slice(0, 5);
 
-  if (humanTalked) {
+  // 人类叫我的时候，我正在睡小觉或者正吃着白饭 → 就被打扰了，心情掉一点。
+  const sleepingNow = sleep.napWindow;
+  if (humanTalked && sleepingNow) {
+    key = 'woken';
+    reasons.unshift(`正在睡小觉（${sleep.napMinutes} 分钟那种）`);
+  } else if (humanTalked && rice.eating) {
+    key = 'rice_call';
+    reasons.unshift('正在吃白饭');
+  } else if (humanTalked) {
     key = 'glad';
     reasons.unshift('人类刚说话');
   }
@@ -237,13 +294,12 @@ export function composeMood({ now = new Date(), weather, comfort, quotaUsed = 0,
     key = 'tired';
     reasons.push('额度快用完了');
   }
+  const finalScore = round2(clamp(score - (key === 'woken' || key === 'rice_call' ? WHALE_PREFS.interruptPenalty : 0), 0, 1));
 
   const mood = MOODS[key] || MOODS.content;
   const names = WHALE.names;
   const index = Number.isFinite(seed) ? Math.abs(Math.trunc(seed)) % names.length : Math.floor(Math.random() * names.length);
   const self = names[index];
-  const rice = riceState(now);
-  const sleep = sleepState(now);
   return {
     key,
     label: mood.label,
@@ -251,11 +307,12 @@ export function composeMood({ now = new Date(), weather, comfort, quotaUsed = 0,
     line: mood.line.replaceAll('{name}', self),
     dayPart: sleep.part,
     reasons,
-    score: feeling.score,
+    score: finalScore,
+    weatherScore: feeling.score,
     parts: feeling.parts,
     energy: round2(clamp(1 - quotaUsed, 0, 1)),
     rice: rice.line,
-    napMinutes: sleep.night ? sleep.napMinutes : 0,
+    napMinutes: sleepingNow ? sleep.napMinutes : 0,
     humanComfort: comfort?.level || '',
   };
 }

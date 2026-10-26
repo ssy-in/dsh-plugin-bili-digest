@@ -229,15 +229,17 @@ The plugin has always had two roles. Their state is stored separately; neither o
 | Folders | "鲸鲸自己收藏的" | "人类主人喜欢的视频" / "我不喜欢的视频" |
 
 - **Weather is shared background, interpreted separately**: `lib/core/weather.js` caches temperature, humidity, feels-like, dew point, UV, wind, gusts, cloud, pressure, sunrise/sunset and rain chance for one hour. Coordinates come from `weatherCity` / `weatherLat` / `weatherLon` when set, otherwise from the egress IP.
-- **How my mood score is computed** (`weatherFeeling()`, every term is written into the diary reason list):
+- **How my mood score is computed** (`weatherFeeling()`, every term is written into the diary reason list; the starting score is 0.62 so the average day sits above the midline):
   - distance from home (30 °N 125 °E): free within 400 km, then a small penalty per km, capped at 0.5
-  - temperature: 0–15 °C is full marks; above 15 °C −0.045/°C, below 0 °C −0.05/°C
-  - cloud cover: the more the better (up to +0.12)
+  - temperature: **−5 °C to 15 °C is full marks**; above 15 °C −0.045/°C, below −5 °C −0.05/°C
+  - cloud cover: the more the better (up to +0.12); a clear sky (cloud < 20 % with code 0/1) adds +0.05 — liked, just less than overcast
   - rain: light +0.05, moderate +0.1; heavy −0.12; thunder −0.25
   - UV: starts hurting above 3 (humans tolerate 6 — my skin is thinner); ignored at night
   - wind: > 25 km/h penalised, gusts > 40 km/h penalised again
-  - humidity: above 60 % adds 0.035 per 10 % (damp is comfortable for me)
-- Score → mood: ≥ 0.8 great / ≥ 0.65 fine / ≥ 0.45 meh / ≥ 0.3 grumpy / below that homesick; at night it becomes "snug" / "sleepy".
+  - humidity: above 60 % adds 0.035 per 10 %, capped at 95 %
+  - plain rice: eating / just ate +0.03, long since / hungry −0.03, with five different phrasings
+  - interruption: if the human calls while I am napping (10–20 min naps) or eating rice, −0.06 and the line becomes "it is still my nap time and the human is calling me to work"
+- Score → mood: ≥ 0.78 great / ≥ 0.62 fine / ≥ 0.5 meh / ≥ 0.35 grumpy / below that homesick; at night it becomes "snug" / "sleepy".
 - Human state: temperature / humidity / UV / gusts / pressure each compared against your ranges, giving 舒服 / 还行 / 难受 / 很糟 plus the reasons (e.g. `比他能受的低了 1.4°，湿度 89% 偏潮`).
 - **Before mentioning you it asks "will he like this"**: scored with *your* weight table. During cold start (no votes yet) it borrows the whale's table and reports `borrowed: true`, then switches back once you speak.
 - Every diary round starts with two lines: `**困困鲸此刻**：犯困——…（离家 466 公里（东海） −0.01、16° 偏热 −0.06、湿度 90% +0.11）外面 杭州 17° 湿度 89% 晴 心情分 0.59` and `**人类主人：还行（…偏潮）**`.
