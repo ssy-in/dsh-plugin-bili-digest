@@ -39,11 +39,17 @@
 ### 1. 作为 DSH 插件（推荐）
 
 ```bash
-# 在插件市场里搜索 bili-digest，或从本地 tgz 安装
+# A. 直接从 GitHub 装（最省事，无需先打包）
+pnpm add "github:ssy-in/dsh-plugin-bili-digest"
+
+# B. 或者从本地 tgz 装
 npm pack                      # 生成 dsh-plugin-bili-digest-0.1.0.tgz
+pnpm add "file:./dsh-plugin-bili-digest-0.1.0.tgz"
 ```
 
-装好后在「设置 → 插件 → B 站字幕速览」里填一次 `SESSDATA`，点「开始一轮」。
+仓库地址：<https://github.com/ssy-in/dsh-plugin-bili-digest>。
+
+装好后把 `dsh-plugin-bili-digest` 加进 profile 的 `dsh.profile.bundles`，重启 DSH，在「设置 → 插件 → B 站字幕速览」里填一次 `SESSDATA`，点「开始一轮」。
 
 ### 2. 作为命令行工具
 

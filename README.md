@@ -41,10 +41,17 @@ wbi-signed search → hard gate (view + subtitle list)
 ### As a DSH plugin
 
 ```bash
+# A. straight from GitHub (simplest — no packing step)
+pnpm add "github:ssy-in/dsh-plugin-bili-digest"
+
+# B. or from a local tarball
 npm pack     # produces dsh-plugin-bili-digest-0.1.0.tgz
+pnpm add "file:./dsh-plugin-bili-digest-0.1.0.tgz"
 ```
 
-Install it from the plugin market, then open **Settings → Plugins → B 站字幕速览**, paste your `SESSDATA` once, and press «开始一轮».
+Repository: <https://github.com/ssy-in/dsh-plugin-bili-digest>.
+
+Then add `dsh-plugin-bili-digest` to the profile's `dsh.profile.bundles`, restart DSH, open **Settings → Plugins → B 站字幕速览**, paste your `SESSDATA` once, and press «开始一轮».
 
 ### As a CLI tool
 
