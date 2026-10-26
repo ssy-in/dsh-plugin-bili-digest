@@ -14,6 +14,7 @@ import { runInbox, noteUnclear, readReview, LIMITS } from '../lib/core/inbox.js'
 import { readTagBook, syncTagBook } from '../lib/core/tagbook.js';
 import { reviewState, syncReview } from '../lib/core/review.js';
 import { renderTalks, syncTalks } from '../lib/core/talks.js';
+import { summarizeTitles, resetTitleLog } from '../lib/core/titles.js';
 
 const USAGE = `bili-digest — 字幕优先的 B 站视频阅读器
 
@@ -35,6 +36,7 @@ const USAGE = `bili-digest — 字幕优先的 B 站视频阅读器
   bili-digest review [sync]                         # 待评审清单（sync = 立刻写一份到「我看视频/评审/」）
   bili-digest talks [--limit 50]                    # 对话流水（我说了什么、人类说了什么）
   bili-digest tags                                  # 重建标签库文档：我喜欢的 / 人类喜欢的
+  bili-digest titles [--limit 500] [--reset]         # 标题拆词的记录与可行性汇总（目前只记录、不参与排序）
   bili-digest last                                  # 上次结果摘要
 
 环境变量：
@@ -127,7 +129,7 @@ async function main() {
     return me.isLogin ? 0 : 1;
   }
 
-  const needsLogin = !['status', 'last', 'help', 'frames', 'presets', 'review', 'tags', 'talks'].includes(command);
+  const needsLogin = !['status', 'last', 'help', 'frames', 'presets', 'review', 'tags', 'talks', 'titles'].includes(command);
   const config = loadConfig({ requireLogin: needsLogin });
 
   if (command === 'tags') {
@@ -384,6 +386,28 @@ async function main() {
     const file = syncTalks({});
     process.stdout.write(renderTalks({ limit: num(args.limit, 50) }));
     process.stdout.write(`\n（已写 ${file}）\n`);
+    return 0;
+  }
+
+  if (command === 'titles') {
+    if (args.reset) {
+      resetTitleLog();
+      process.stdout.write('标题词元日志已清空\n');
+      return 0;
+    }
+    const summary = summarizeTitles({ limit: num(args.limit, 500) });
+    if (!summary.entries) {
+      process.stdout.write(`还没有标题词元（只记录、不参与排序）。累起来会写在 ${summary.file}\n`);
+      return 0;
+    }
+    process.stdout.write(`标题词元：${summary.entries} 条视频 ｜ 切出 ${summary.distinctTokens} 个不同词 ｜ 命中已有权重 ${summary.hitTokens} 次（${Math.round(summary.hitRate * 100)}% 的视频至少命中一个）\n`);
+    process.stdout.write('\n最常见的词：\n');
+    for (const [token, count] of summary.top) process.stdout.write(`- ${token} ×${count}\n`);
+    if (summary.topEmotion.length) {
+      process.stdout.write('\n情绪词（单独一栏，不参与内容口味）：\n');
+      for (const [word, count] of summary.topEmotion) process.stdout.write(`- ${word} ×${count}\n`);
+    }
+    process.stdout.write(`\n日志：${summary.file}\n`);
     return 0;
   }
 
