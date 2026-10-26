@@ -9,7 +9,9 @@ const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-persona-'));
 process.env.BILI_DIGEST_HOME = HOME;
 
 const { HUMAN_DEFAULTS, comfortReport, humanProfile, noteHumanSaid, readHumanSaid, describeHuman } = await import('../lib/core/human.js');
-const { composeMood, dayPart, renderMoodLine, MOODS } = await import('../lib/core/persona.js');
+const { composeMood, dayPart, renderMoodLine, MOODS, WHALE_PREFS, weatherFeeling, distanceKm, riceState, sleepState } = await import(
+  '../lib/core/persona.js'
+);
 
 const weather = (patch = {}) => ({
   available: true,
@@ -70,27 +72,86 @@ test('describeHuman 说人话', () => {
   assert.ok(describeHuman({ available: false }, HUMAN_DEFAULTS).includes('天气没拿到'));
 });
 
-test('鲸鲸的心情：深夜犯困、潮湿黏、天冷缩着、额度用完累、人类说话就美滋滋', () => {
+test('鲸鲸的心情：深夜犯困、额度用完累、人类说话就美滋滋', () => {
   const night = new Date('2026-10-26T23:40:00');
   assert.equal(dayPart(night), 'night');
-  assert.equal(composeMood({ now: night, seed: 0 }).key, 'sleepy');
+  const sleepy = composeMood({ now: night, seed: 0 });
+  assert.ok(['sleepy', 'snug'].includes(sleepy.key), `深夜应该是困或窝着，实际 ${sleepy.key}`);
 
   const noon = new Date('2026-10-26T12:10:00');
-  assert.equal(composeMood({ now: noon, weather: weather({ humidity: 88 }), seed: 0 }).key, 'sticky');
-  assert.equal(composeMood({ now: noon, weather: weather({ temp: 9 }), seed: 0 }).key, 'cold');
-  assert.equal(composeMood({ now: noon, weather: weather({ pressure: 998 }), seed: 0 }).key, 'heavy');
   assert.equal(composeMood({ now: noon, weather: weather(), quotaUsed: 0.9, seed: 0 }).key, 'tired');
   assert.equal(composeMood({ now: noon, weather: weather(), humanTalked: true, seed: 0 }).key, 'glad');
 });
 
+test('温度 0–15℃ 最舒服，往上往下都掉分', () => {
+  const place = { lat: 30.0, lon: 125.0 }; // 就站在东海上，先把距离这一项消掉
+  const at = (temp) => weatherFeeling(weather({ temp }), { place }).score;
+  const cozy = at(8);
+  assert.ok(cozy > at(20), `8° 应比 20° 舒服：${cozy} vs ${at(20)}`);
+  assert.ok(cozy > at(24), `8° 应比 24° 舒服：${cozy} vs ${at(24)}`);
+  assert.ok(cozy > at(-6), `8° 应比 −6° 舒服：${cozy} vs ${at(-6)}`);
+  assert.ok(at(32) < at(20), '32° 比 20° 更糟');
+});
+
+test('云量越多越高兴，小雨中雨加分，大雨和雷扣分', () => {
+  const place = { lat: 30.0, lon: 125.0 };
+  const base = (patch) => weatherFeeling(weather({ temp: 10, cloud: 0, rain: 0, code: 0, uv: 0, wind: 5, gust: 8, humidity: 50, ...patch }), { place }).score;
+  assert.ok(base({ cloud: 100 }) > base({ cloud: 0 }), '满云量比晴更舒服');
+  assert.ok(base({ rain: 0.6, code: 51 }) > base({}), '小雨加分');
+  assert.ok(base({ rain: 2, code: 63 }) > base({ rain: 0.6, code: 51 }), '中雨比小雨更高兴');
+  assert.ok(base({ rain: 8, code: 65 }) < base({}), '大雨倒扣');
+  assert.ok(base({ code: 95, rain: 3 }) < base({ rain: 8, code: 65 }), '打雷比大雨更糟');
+});
+
+test('紫外线阈值比人类低：3 以上就开始烦，8 以上很难受', () => {
+  const place = { lat: 30.0, lon: 125.0 };
+  const at = (uvMax) => weatherFeeling(weather({ uvMax, uv: uvMax, temp: 10 }), { place }).score;
+  assert.ok(at(2) > at(5), 'UV 5 应比 UV 2 差');
+  assert.ok(at(5) > at(9), 'UV 9 应比 UV 5 更差');
+  assert.ok(at(11) <= at(2) - 0.2, 'UV 11 要明显低于 UV 2');
+});
+
+test('湿度过 60% 加分', () => {
+  const place = { lat: 30.0, lon: 125.0 };
+  const at = (humidity) => weatherFeeling(weather({ humidity, temp: 10 }), { place }).score;
+  assert.ok(at(85) > at(65), '85% 比 65% 高兴');
+  assert.ok(at(65) > at(40), '过了 60% 才有加分');
+});
+
+test('离东海越远越不高兴', () => {
+  const near = weatherFeeling(weather({ temp: 10 }), { place: { lat: 30.0, lon: 125.0 } });
+  const hangzhou = weatherFeeling(weather({ temp: 10 }), { place: { lat: 30.29, lon: 120.16 } });
+  const beijing = weatherFeeling(weather({ temp: 10 }), { place: { lat: 39.9, lon: 116.4 } });
+  assert.ok(near.score > hangzhou.score, '东海 > 杭州');
+  assert.ok(hangzhou.score > beijing.score, '杭州 > 北京');
+  assert.ok(near.parts.some((part) => part.label.includes('东海')));
+  assert.equal(distanceKm({ lat: 30, lon: 125 }, { lat: 30, lon: 125 }), 0);
+});
+
+test('白饭与睡觉：白天 7 成、晚上 5 成，一次睡 10–20 分钟', () => {
+  const day = riceState(new Date('2026-10-26T13:00:00'));
+  const night = riceState(new Date('2026-10-26T23:00:00'));
+  assert.equal(day.percent, WHALE_PREFS.riceDayPercent);
+  assert.equal(night.percent, WHALE_PREFS.riceNightPercent);
+  assert.notEqual(day.line, night.line);
+  const sleep = sleepState(new Date('2026-10-26T23:00:00'));
+  assert.ok(sleep.napMinutes >= 10 && sleep.napMinutes <= 20, `nap=${sleep.napMinutes}`);
+  assert.equal(sleep.totalHours, '5–8');
+});
+
 test('心情带自称与理由，理由与天气对得上', () => {
-  const mood = composeMood({ now: new Date('2026-10-26T12:10:00'), weather: weather({ humidity: 88 }), seed: 1 });
+  const mood = composeMood({
+    now: new Date('2026-10-26T12:10:00'),
+    weather: weather({ humidity: 88, temp: 10 }),
+    seed: 1,
+  });
   assert.ok(['困鲸鲸', '困困鲸', '鲸鲸'].includes(mood.self));
   assert.equal(MOODS[mood.key].label, mood.label);
   assert.ok(mood.line.includes(mood.self), 'line 里要换成自称');
   assert.ok(!mood.line.includes('{name}'), '占位符必须被替换掉');
   assert.ok(mood.reasons.some((reason) => reason.includes('88')), '理由里要有湿度数值');
   assert.ok(mood.energy >= 0 && mood.energy <= 1);
+  assert.ok(mood.rice.length > 0);
 });
 
 test('日记开头那句同时交代鲸鲸与天气', () => {
@@ -99,5 +160,6 @@ test('日记开头那句同时交代鲸鲸与天气', () => {
   assert.ok(line.includes('此刻'), line);
   assert.ok(line.includes('杭州'));
   assert.ok(line.includes('湿度 60%'));
+  assert.ok(line.includes('心情分'));
   assert.equal(renderMoodLine(undefined, weather()), '');
 });
