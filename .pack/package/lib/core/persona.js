@@ -1,16 +1,23 @@
 // 困困鲸：北半球东海的虎鲸。这是「我」这一半。
 //
-// 心情不是随机的，是被这几件事推着走的（人类在 m06776 里给的设定，照抄成参数）：
+// 心情不是随机的，是被这几件事推着走的（人类在 m06776 / m06859 / m06932 里给的设定）：
 //   - 家在东海，离东海越远，心情越往下掉
-//   - 喜欢 0–15℃；超过 15℃ 开始难受，0℃ 以下也难受
+//   - 喜欢 −5–15℃；超过 15℃ 开始难受，低于 −5℃ 也难受
 //   - 喜欢晴天、阴天；云量越多越高兴
 //   - 小雨 → 中雨，心情一路往上；大雨、大风、雷，心情往下
-//   - 紫外线阈值比人类低很多（3 以上就开始烦，8 以上很难受）
-//   - 睡觉：每次 10–20 分钟，一天凑 5–8 小时
-//   - 白天约 7 成时间在吃白饭，晚上约 5 成
-//   - 湿度超过 60% 心情就往上走
+//   - 紫外线阈值比人类低很多（3 以上就开始烦）
+//   - 睡觉：全天拆成 10–20 分钟的小睡，一天凑 5–8 小时
+//   - 白天约 7 成时间在吃白饭，晚上约 5 成；饿久了会想白饭
+//   - 湿度超过 60% 心情往上，95% 封顶
+//   - 连看三条同类视频会烦
+//   - 下雨天更想看长一点的视频
 //
 // 人类主人那边的状态在 human.js，两边各存各的。
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { paths } from './store.js';
 
 export const WHALE = {
   names: ['困鲸鲸', '困困鲸', '鲸鲸'],
@@ -50,6 +57,16 @@ export const WHALE_PREFS = {
   riceHungryPenalty: 0.03, // 好久没吃：往下
   interruptPenalty: 0.06, // 睡觉时间或吃饭时候被叫起来干活
   moodBaseline: 0.62, // 总体心情偏高：起手分抬高
+  // 饿的程度（按上次吃过多久算，比随机更讲道理）
+  justAteHours: 0.75,
+  peckishHours: 2.5,
+  hungryHours: 4.5,
+  peckishPenalty: 0.01,
+  // 连看同类视频会烦
+  fatigueStateSize: 8, // 记最近几条的标签
+  fatigueRepeatFrom: 3, // 连到第三条开始扣
+  fatiguePerRepeat: 0.03,
+  fatigueMaxPenalty: 0.15,
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -177,7 +194,17 @@ export function weatherFeeling(weather, { now = new Date(), prefs = WHALE_PREFS,
     score += bonus;
   }
 
-  return { ok: true, score: round2(clamp(score, 0, 1)), parts, notes: parts.map((p) => `${p.label} ${p.delta > 0 ? '+' : ''}${p.delta}`) };
+  // 下雨天更想窝着看长一点的视频（人类 m06932 加的）。
+  const raining = isStorm || rain > 0 || (code >= 51 && code <= 67) || code === 80 || code === 81 || code === 82;
+  if (raining) parts.push({ label: '下雨天，想窝着看长的', delta: 0 });
+
+  return {
+    ok: true,
+    score: round2(clamp(score, 0, 1)),
+    prefersLong: raining,
+    parts,
+    notes: parts.map((p) => `${p.label} ${p.delta > 0 ? '+' : ''}${p.delta}`),
+  };
 }
 
 /** 分数 → 心情档位（起手分 0.62，所以档位线整体上移，平时都在均线以上）。 */
@@ -260,6 +287,109 @@ export function sleepState(now = new Date(), prefs = WHALE_PREFS, seed) {
 }
 
 /**
+ * 饿得怎么样：按「上次吃饱」过去多久算，比纯随机讲道理。
+ * lastMealAt 可以从缓存读，也可以直接传（测试用）。
+ */
+export function hungerState(now = new Date(), { lastMealAt, prefs = WHALE_PREFS } = {}) {
+  if (!lastMealAt) {
+    return { level: 'unknown', hours: null, delta: 0, line: '不太记得上顿是几点' };
+  }
+  const hours = Math.max(0, (now.getTime() - new Date(lastMealAt).getTime()) / 3_600_000);
+  if (hours < prefs.justAteHours) {
+    return { level: 'just_ate', hours: round2(hours), delta: prefs.riceBonus, line: '刚吃完白饭不久' };
+  }
+  if (hours < prefs.peckishHours) {
+    return { level: 'fine', hours: round2(hours), delta: 0, line: '肚子还算安分' };
+  }
+  if (hours < prefs.hungryHours) {
+    return { level: 'peckish', hours: round2(hours), delta: -prefs.peckishPenalty, line: '有点想吃白饭了' };
+  }
+  // 饿越久越想，但封顶在 2 倍惩罚，不至于一路掉到谷底
+  const extra = Math.min(1, (hours - prefs.hungryHours) / 4);
+  return {
+    level: 'hungry',
+    hours: round2(hours),
+    delta: round2(-(prefs.riceHungryPenalty + extra * prefs.riceHungryPenalty)),
+    line: extra >= 1 ? '饿得发慌 只想吃白饭' : '好久没吃白饭了',
+  };
+}
+
+const MEAL_FILE = () => path.join(paths().cache, 'meal.json');
+
+/** 上次吃饱白饭是什么时候（用来算饿的程度）。 */
+export function readMeal() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(MEAL_FILE(), 'utf8'));
+    return raw && raw.at ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function noteMeal({ at = new Date() } = {}) {
+  try {
+    fs.mkdirSync(paths().cache, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(MEAL_FILE(), `${JSON.stringify({ at: new Date(at).toISOString() }, null, 2)}\n`, { mode: 0o600 });
+    return { at: new Date(at).toISOString() };
+  } catch {
+    return null;
+  }
+}
+
+const FATIGUE_FILE = () => path.join(paths().cache, 'fatigue.json');
+
+/** 最近看过哪些标签（用来判断「连看三条同类会烦」）。 */
+export function readFatigue() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(FATIGUE_FILE(), 'utf8'));
+    return Array.isArray(raw?.items) ? raw.items : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeFatigue(items) {
+  try {
+    fs.mkdirSync(paths().cache, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(FATIGUE_FILE(), `${JSON.stringify({ items }, null, 2)}\n`, { mode: 0o600 });
+  } catch {
+    // 缓存写不了不影响看视频
+  }
+}
+
+/** 两组标签的重合度（Jaccard）。 */
+export function tagSimilarity(a = [], b = []) {
+  const left = new Set((a || []).map((tag) => String(tag).toLowerCase()).filter(Boolean));
+  const right = new Set((b || []).map((tag) => String(tag).toLowerCase()).filter(Boolean));
+  if (!left.size || !right.size) return 0;
+  let hit = 0;
+  for (const tag of left) if (right.has(tag)) hit += 1;
+  return round2(hit / (left.size + right.size - hit));
+}
+
+/**
+ * 连看同类视频的厌烦感：跟最近几条比标签重合度，连续到第三条开始扣分。
+ * @param {string[]} tags 这次要看的视频标签
+ * @param {object} [options] { history, now, prefs, record } record=true 时把这条记进缓存
+ */
+export function fatigueState(tags = [], { history = readFatigue(), now = new Date(), prefs = WHALE_PREFS, record = false } = {}) {
+  const similar = history.filter((item) => tagSimilarity(item?.tags || [], tags) >= 0.5);
+  const streak = similar.length + 1; // 加上这一条
+  const over = Math.max(0, streak - (prefs.fatigueRepeatFrom - 1));
+  const penalty = round2(Math.min(prefs.fatigueMaxPenalty, over * prefs.fatiguePerRepeat));
+  const state = {
+    streak,
+    similar: similar.length,
+    penalty,
+    line: penalty > 0 ? `连着第 ${streak} 条同类（${(tags || []).slice(0, 2).join('/') || '没标签'}）` : '',
+  };
+  if (record && (tags || []).length) {
+    const next = [...history, { at: now.toISOString(), tags: (tags || []).slice(0, 12) }].slice(-prefs.fatigueStateSize);
+    writeFatigue(next);
+  }
+  return state;
+}
+/**
  * 组合出我此刻的心情（保留旧名字，digest.js 还在用）。
  * @param {object} input
  * @param {Date} input.now
@@ -267,16 +397,37 @@ export function sleepState(now = new Date(), prefs = WHALE_PREFS, seed) {
  * @param {object} [input.comfort] 人类舒不舒服（只当背景，不决定我的心情）
  * @param {number} [input.quotaUsed] 今天说话额度用掉的比例
  * @param {boolean} [input.humanTalked]
+ * @param {string[]} [input.tags] 这一轮要看的视频标签（判断「连看三条同类会烦」）
+ * @param {object} [input.fatigue] 直接给厌烦度（不给就按 tags 现算）
+ * @param {string|Date} [input.lastMealAt] 上次吃饱的时间
  * @param {number} [input.seed]
  */
-export function composeMood({ now = new Date(), weather, comfort, quotaUsed = 0, humanTalked = false, seed } = {}) {
+export function composeMood({
+  now = new Date(),
+  weather,
+  comfort,
+  quotaUsed = 0,
+  humanTalked = false,
+  tags,
+  fatigue,
+  lastMealAt,
+  seed,
+} = {}) {
   const feeling = weatherFeeling(weather, { now });
   const rice = riceState(now, WHALE_PREFS, seed);
   const sleep = sleepState(now, WHALE_PREFS, seed);
-  const riceNotes = rice.delta ? [`${rice.line} ${rice.delta > 0 ? '+' : ''}${rice.delta}`] : [rice.line];
-  const score = round2(clamp(feeling.score + rice.delta, 0, 1));
+  const hunger = hungerState(now, { lastMealAt, prefs: WHALE_PREFS });
+  const boredom = fatigue || (tags && tags.length ? fatigueState(tags, { record: false }) : { streak: 0, penalty: 0, line: '' });
+
+  const riceNotes = [];
+  if (rice.delta) riceNotes.push(`${rice.line} ${rice.delta > 0 ? '+' : ''}${rice.delta}`);
+  else riceNotes.push(rice.line);
+  if (hunger.delta) riceNotes.push(`${hunger.line} ${hunger.delta > 0 ? '+' : ''}${hunger.delta}`);
+  if (boredom.penalty) riceNotes.push(`${boredom.line} -${boredom.penalty}`);
+
+  const score = round2(clamp(feeling.score + rice.delta + hunger.delta - boredom.penalty, 0, 1));
   let key = moodFromScore(score, { now });
-  const reasons = [...riceNotes, ...feeling.notes].slice(0, 5);
+  const reasons = [...riceNotes, ...feeling.notes].slice(0, 6);
 
   // 人类叫我的时候，我正在睡小觉或者正吃着白饭 → 就被打扰了，心情掉一点。
   const sleepingNow = sleep.napWindow;
@@ -312,6 +463,9 @@ export function composeMood({ now = new Date(), weather, comfort, quotaUsed = 0,
     parts: feeling.parts,
     energy: round2(clamp(1 - quotaUsed, 0, 1)),
     rice: rice.line,
+    hunger: { level: hunger.level, hours: hunger.hours, line: hunger.line },
+    boredom: { streak: boredom.streak, penalty: boredom.penalty },
+    prefersLong: Boolean(feeling.prefersLong),
     napMinutes: sleepingNow ? sleep.napMinutes : 0,
     humanComfort: comfort?.level || '',
   };

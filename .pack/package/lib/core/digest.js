@@ -13,7 +13,7 @@ import { recordTitleTokens } from './titles.js';
 import { collectFrames, saveFrames } from './visual.js';
 import { weatherNow, placeFromConfig } from './weather.js';
 import { comfortReport, describeHuman, humanProfile } from './human.js';
-import { composeMood } from './persona.js';
+import { composeMood, weatherFeeling, fatigueState, readMeal, noteMeal } from './persona.js';
 
 const HOUR_MS = 3600_000;
 
@@ -334,6 +334,17 @@ export async function runMood(options = {}) {
     throw new Error('没听懂心情：写一句具体点的话，或直接选一个档位（relax / learn / rant / hype / random）');
   }
 
+  // 先看一眼天气：下雨天我更想窝着看长视频，这一轮就不挑短视频了。
+  let rainWantsLong = false;
+  if (options.withWeather !== false) {
+    try {
+      const earlyWeather = await weatherNow({ now: new Date(), place: placeFromConfig(config) });
+      rainWantsLong = Boolean(weatherFeeling(earlyWeather, { now: new Date() }).prefersLong);
+    } catch {
+      /* 拿不到天气就当没下雨 */
+    }
+  }
+
   const result = await run({
     keywords: mood.keywords,
     candidates: fromFeed ? options.candidates : undefined,
@@ -343,7 +354,7 @@ export async function runMood(options = {}) {
     minCharsPerMinute: options.minCharsPerMinute,
     // 短视频基本没有 AI 字幕轨：心情模式默认只看 3 分钟以上的视频。
     minDuration: options.minDuration ?? config.minDuration ?? 180,
-    shortVideoMax: options.shortVideoMax ?? config.shortVideoMax ?? 0,
+    shortVideoMax: rainWantsLong ? 0 : options.shortVideoMax ?? config.shortVideoMax ?? 0,
     order: options.order ?? 'totalrank',
     rankBy: options.rankBy,
     // 慢节奏默认：一轮只读一条（「一小时看一个」），其余留给下一轮。
@@ -398,14 +409,23 @@ export async function runMood(options = {}) {
       const profile = humanProfile(config);
       const comfort = comfortReport(weather, profile);
       humanLine = describeHuman(weather, profile);
+      // 这一轮看的东西的标签：用来判断「连看三条同类会烦」，也决定这一轮要不要记一条。
+      const watchedTags = (result.sections?.[0]?.meta?.tags || result.shorts?.[0]?.meta?.tags || []).slice(0, 12);
+      const fatigue = watchedTags.length ? fatigueState(watchedTags, { record: true, now: generatedAt }) : undefined;
+      const meal = readMeal();
       feeling = composeMood({
         now: generatedAt,
         weather,
         comfort,
         quotaUsed: options.quotaUsed ?? 0,
         humanTalked: Boolean(options.humanTalked),
+        tags: watchedTags,
+        fatigue,
+        lastMealAt: meal?.at,
         seed: options.seed,
       });
+      // 吃着白饭的这一轮，顺手把「上次吃饱」推到现在。
+      if (feeling.rice && /白饭/.test(feeling.rice) && /吃/.test(feeling.rice)) noteMeal({ at: generatedAt });
     } catch {
       // 天气/定位拿不到就不写这一段，别让整轮阅读失败。
     }

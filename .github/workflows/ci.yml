@@ -25,7 +25,7 @@ jobs:
       - name: Unit tests
         run: |
           node scripts/prepare-test.mjs
-          node test/core.test.js && node test/persona.test.js
+          node test/core.test.js && node test/persona.test.js && node test/extreme.test.js
           node test/frames.test.js
           node test/mood.test.js
           node test/tone.test.js
