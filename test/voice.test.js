@@ -18,8 +18,20 @@ test('话术池：每句都短、一句、不带 @、不自称 AI', () => {
       assert.doesNotMatch(line, /@/);
       assert.doesNotMatch(line, /AI|人工智能|模型|机器人|助手|系统/);
       assert.equal(line.trim().split('\n').length, 1);
+      // 人类定的：少用标点，一句 0–2 个，用空格断句
+      const marks = (line.match(/[，。、；：！？,.;:!?…「」（）()]/g) || []).length;
+      assert.ok(marks <= 2, `${intent} 标点太多：${line}`);
     }
   }
+});
+
+test('推视频的问尾：短而口语，有时干脆不问', async () => {
+  const { ASK_TAILS, withTail } = await import('../lib/core/voice.js');
+  for (const tail of ASK_TAILS) assert.ok(tail.length <= 4, `问尾太长：${tail}`);
+  assert.ok(ASK_TAILS.includes(''), '要有不问的情况');
+  assert.equal(withTail('鲸鲸挖到宝了', 0), '鲸鲸挖到宝了 怎么样？');
+  assert.equal(withTail('鲸鲸挖到宝了', 0.99), '鲸鲸挖到宝了');
+  assert.doesNotMatch(withTail('x', 0.1), /你看看这个怎么样/);
 });
 
 test('pickLine: 30 天内不重复，自称在 SELF 里，{self} 被替换掉', () => {

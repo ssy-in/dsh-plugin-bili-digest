@@ -89,3 +89,14 @@ test('renderShort / renderReport 把短视频写成一行带标签的条目', ()
   });
   assert.ok(report.includes('短视频（不看字幕'));
 });
+
+test('热度分：收藏/点赞多的排前面，粉丝量不看', async () => {
+  const { hotScore } = await import('../lib/core/digest.js');
+  const cold = { play: 300, favorites: 2, like: 10 };
+  const warm = { play: 20000, favorites: 300, like: 1500 };
+  const hot = { play: 500000, favorites: 20000, like: 40000 };
+  assert.ok(hotScore(hot) > hotScore(warm) && hotScore(warm) > hotScore(cold));
+  // 同样播放量，收藏多的更热
+  assert.ok(hotScore({ play: 10000, favorites: 800 }) > hotScore({ play: 10000, favorites: 10 }));
+  assert.equal(hotScore({}), 0);
+});

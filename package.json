@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-bili-digest",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "字幕优先的 B 站视频阅读器：有字幕的只把关键段落交给模型，没有字幕的改用分镜截图。Subtitle-first Bilibili reader for DeepSeek Harness: feed the model only the dense caption segments, and fall back to storyboard screenshots when a video has no captions.",
   "type": "module",
   "main": "lib/index.js",
