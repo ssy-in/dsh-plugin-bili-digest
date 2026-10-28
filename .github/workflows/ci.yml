@@ -35,7 +35,7 @@ jobs:
           node test/talks.test.js
           node test/titles.test.js && node test/short.test.js && node test/feed.test.js && node test/daily.test.js
           node test/plugin.test.js
-          node test/client.test.js
+          node test/session.test.js && node test/client.test.js
       - name: JSON and YAML sanity
         run: |
           node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json ok')"
