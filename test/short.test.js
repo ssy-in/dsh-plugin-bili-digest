@@ -100,3 +100,20 @@ test('热度分：收藏/点赞多的排前面，粉丝量不看', async () => {
   assert.ok(hotScore({ play: 10000, favorites: 800 }) > hotScore({ play: 10000, favorites: 10 }));
   assert.equal(hotScore({}), 0);
 });
+
+test('有字幕的短视频也带画面：报告里写帧数与时间点', () => {
+  const section = {
+    meta: { bvid: 'BV1SHORTSUB', title: '跳舞的 coser', up: '某个 UP', duration: 95, cid: 2 },
+    picked: [{ from: 5, to: 20, text: '第一句话' }],
+    chars: 120,
+    track: { label: '中文（自动生成）', lan: 'ai-zh', ai: true },
+    charsPerMinute: 75,
+    short: true,
+    frames: [{ second: 0 }, { second: 16 }, { second: 32 }, { second: 48 }, { second: 64 }, { second: 80 }],
+    frameDir: 'H:/x/画面/20261029',
+  };
+  const text = renderVideo(section);
+  assert.ok(text.includes('短视频（有字幕）'));
+  assert.ok(text.includes('画面 6 帧'));
+  assert.ok(text.includes('0:00') && text.includes('1:20'));
+});
