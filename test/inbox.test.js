@@ -170,3 +170,83 @@ test('人类说喜欢：记进标签库的 his 栏（没 csrf 时不碰收藏夹
   assert.equal(entry.note, '人类说喜欢');
   assert.deepEqual(entry.tags, ['评测', 'AI']);
 });
+
+test('人类说喜欢：口味长在人类自己的表里，鲸鲸那张表一个字节都不动', async () => {
+  const { readWeights, tagWeight } = await import('../lib/core/weights.js');
+  const whaleFile = path.join(home, 'bili-digest', 'cache', 'weights.json');
+  fs.mkdirSync(path.dirname(whaleFile), { recursive: true });
+  fs.writeFileSync(
+    whaleFile,
+    JSON.stringify({ tags: { 塔防: { fast: 0.5, slow: 0.7, seen: 3, likes: 3, updatedAt: '2026-10-20T00:00:00.000Z' } }, updatedAt: '2026-10-20T00:00:00.000Z' }),
+  );
+  const before = fs.readFileSync(whaleFile, 'utf8');
+  await applyPreference(
+    { csrf: '', atMid: ownerMid },
+    { bvid: 'BV1hh411c7hh', text: '这个我喜欢' },
+    'like',
+    { api: { view: async () => ({ aid: 43, title: '塔防视频', tags: ['塔防', '攻略'] }) }, now: new Date() },
+  );
+  assert.equal(fs.readFileSync(whaleFile, 'utf8'), before, '鲸鲸的口味表不该被人类的表态碰到');
+  const human = readWeights('human');
+  assert.ok(human.tags['塔防'], '人类表里应该长出「塔防」');
+  assert.ok(human.tags['塔防'].fast > 0);
+  // 幅度要「轻一档」：鲸鲸 like 是 1，人类 like 只有 0.45，摊到两个标签约 0.32，远低于鲸鲸那条已有 0.5+。
+  assert.ok(tagWeight('塔防', human, new Date(), undefined, 'human') < 0.5, `人类表幅度应偏轻，实际 ${tagWeight('塔防', human, new Date(), undefined, 'human')}`);
+});
+
+test('人类说喜欢：view 不给 tags 时自己去 view/detail 补，别把表态记成空标签', async () => {
+  const { readWeights } = await import('../lib/core/weights.js');
+  let asked = '';
+  const result = await applyPreference(
+    { csrf: '', atMid: ownerMid },
+    { bvid: 'BV1jj411c7jj', text: '这个我喜欢' },
+    'like',
+    {
+      api: {
+        view: async () => ({ aid: 44, title: '没有标签的视频', tags: [] }),
+        tags: async (bvid) => {
+          asked = bvid;
+          return ['音乐', '现场'];
+        },
+      },
+      now: new Date(),
+    },
+  );
+  assert.equal(asked, 'BV1jj411c7jj', '应该补一次 view/detail');
+  assert.deepEqual(result.tags, ['音乐', '现场']);
+  const human = readWeights('human');
+  assert.ok(human.tags['音乐'], '补齐的标签要进人类表');
+});
+
+test('normalize: 人类自己的回复没有 rpid，同一个人说同一句话只算一条', () => {
+  const base = {
+    user: { mid: 9134117, nickname: '三千型四季丶' },
+    item: { source_content: '游戏挺有意思的[打call]', uri: 'https://www.bilibili.com/video/BV1oMnZ6yEhg' },
+  };
+  // 同一条消息两天被拉到，reply_time 不一样——旧实现会当成两条，收藏和口味重复记。
+  const day1 = normalize({ ...base, reply_time: 1761447723 }, 'reply');
+  const day2 = normalize({ ...base, reply_time: 1761523680 }, 'reply');
+  assert.equal(day1.rpid, '');
+  assert.equal(day1.id, day2.id, '不同 reply_time 的同一条消息应得到同一个 id');
+});
+
+test('人类说喜欢：「人类主人喜欢的视频」夹子被删了就退到默认收藏夹', async () => {
+  let used = '';
+  const result = await applyPreference(
+    { csrf: 'a'.repeat(32), atMid: ownerMid },
+    { bvid: 'BV1kk411c7kk', text: '这个我喜欢' },
+    'like',
+    {
+      api: { view: async () => ({ aid: 45, title: '要收藏的视频', tags: ['记录'] }) },
+      folders: { liked: '', misc: 3501772585 },
+      deal: async (config, { add }) => {
+        used = add[0];
+        return { code: 0 };
+      },
+      now: new Date(),
+    },
+  );
+  assert.equal(result.favorite, 'ok');
+  assert.equal(used, 3501772585, 'liked 缺失时应退到默认收藏夹');
+  assert.equal(result.folder, '人类主人喜欢的视频', '文案里仍说人类喜欢的那个夹子');
+});

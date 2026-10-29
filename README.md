@@ -200,6 +200,8 @@ bili-digest talks                # conversation log (mine and the human's) -> �
 
 **If he says he likes it, it gets saved.** When the human's reply says like/liked/watch this (and not dislike/stop), that video is filed into the "人类主人喜欢的视频" folder and its tags are recorded in the tag book's "liked by the human" column; a clear dislike files it under "我不喜欢的视频". Each message is handled once, independent of the reply quota.
 
+**His taste and mine are kept apart.** When he says he likes something, only `cache/human-weights.json` moves — the tags of that video go up by a little (+0.45, spread across each tag so one video barely nudges anything), and a dislike pushes them down by less (−0.25). My own `cache/weights.json` is not touched at all, so his words never change how I pick videos or what goes into my own folder. The reverse holds too: what I collect for myself never gets counted as "what he likes". It takes three or four mentions of the same kind of thing before it crosses the bar for @-ing him.
+
 ## Tag book (`我看视频/标签库.md`)
 
 Every video that gets read leaves its tags behind, collected into one document:
@@ -228,6 +230,7 @@ The plugin has always had two roles. Their state is stored separately; neither o
 | Comfort ranges | **an orca from the East China Sea**: 0–15 °C, RH > 60 % helps, more cloud is better, light/moderate rain helps, UV ≤ 3, the further from home the worse | 18–32 °C, 45–75 % RH, UV ≤ 6, gusts ≤ 25, pressure ≥ 1005 |
 | Rhythm | naps of 10–20 min, 5–8 h a day; ~70 % of daytime spent eating plain rice, ~50 % at night | your own hours (up 08:00, asleep 01:30) |
 | Taste weights | `cache/weights.json` (**only** from videos I collected myself) | `cache/human-weights.json` (**only** from your like/dislike) |
+| Signal size | `SIGNAL`: collecting +0.5, an explicit like +1 | `HUMAN_SIGNAL`: your like +0.45, dislike −0.25 (**one notch lighter**, spread over the tags) |
 | Words | `lib/core/voice.js` packs, self-name rotates 困鲸鲸 / 困困鲸 / 鲸鲸 | `cache/human-said.jsonl`: your own words, verbatim, for review |
 | Folders | "鲸鲸自己收藏的" | "人类主人喜欢的视频" / "我不喜欢的视频" |
 
@@ -293,7 +296,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 - Loads as a plugin inside a real DSH 0.2.1-rc.2 host (`dsh --profile <cloned profile> web`): the client bundle is picked up into `__DSH_BOOT__` and served at `plugins/??dsh-plugin-bili-digest/client.js` (13 KB, syntax-checked).
 - One end-to-end run (keyword `deepseek`, 4 candidates): 3 readable, 1 dropped for having no subtitle track; 1932 subtitle chars → 1064 chars into the model (45% saved) in 3.35 s; the report lands in `<DSH_HOME>/bili-digest/reports/`.
 - Local API fence verified: POST without the `x-bili-digest` header → 403; foreign `Origin` → 403; unknown subpath → 404; settings persist to `<DSH_HOME>/bili-digest/config.json`.
-- 176 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 14 / inbox 10 / tag book 7 / voice 8 / weights 6 / schedule 8 / talks+review 5 / short videos 7 / titles 6 / persona 17 / regions 7 / extreme 8 / feed 4 / daily 3 / own-favorite cap 4 / plugin wiring 16 / client 4).
+- 180 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 14 / inbox 14 / tag book 7 / voice 8 / weights 6 / schedule 8 / talks+review 5 / short videos 7 / titles 6 / persona 17 / regions 7 / extreme 8 / feed 4 / daily 3 / own-favorite cap 4 / plugin wiring 16 / client 4).
 - Favorites writes verified against a real account: adding to and removing from 我不喜欢的视频 both return `code:0` (the listing endpoint lags about a second), and comment sampling returns real text.
 - Mood mode verified end to end through the plugin routes: `POST /bili-digest/api/mood` → 202, polled `/job` to `done`, both markdown files written (`diary/…` + `reports/…`), `GET /bili-digest/api/diary` → 200 with the diary text; the diary contains the mood line, the keyword rationale, per-video highlights and the emotional arc.
 - Frame path verified against the live API: `BV1Fdna6mE9W` (5:30) storyboard is 10×10 with 480×270 cells; 6 frames in 2.3 s at 22–37 KB each; `bili-digest read BV1Fdna6mE9W --frames 2` returns frames that line up with the quoted segments (0:20, 2:05).
@@ -302,7 +305,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 ## Development
 
 ```bash
-npm test                    # 176 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/titles/persona/regions/extreme/feed/daily/own-cap/wiring/client)
+npm test                    # 180 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/titles/persona/regions/extreme/feed/daily/own-cap/wiring/client)
 node test/frames.test.js    # storyboard geometry, frame planning, cropping
 node bin/bili-digest.js --help
 ```
