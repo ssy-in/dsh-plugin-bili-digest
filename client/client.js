@@ -299,6 +299,7 @@ window.__ModuleLoader__.load({
 				minDuration: "180",
 				shortVideoMax: "300",
 				maxVideos: "1",
+				ownFavoritePerDay: "3",
 				autoEveryMinutes: "0",
 				scheduleEnabled: true,
 				activeFrom: "08:00",
@@ -341,6 +342,7 @@ window.__ModuleLoader__.load({
 									minDuration: String(data.settings.minDuration === undefined ? current.minDuration : data.settings.minDuration),
 									shortVideoMax: String(data.settings.shortVideoMax === undefined ? current.shortVideoMax : data.settings.shortVideoMax),
 									maxVideos: String(data.settings.maxVideos === undefined ? current.maxVideos : data.settings.maxVideos),
+									ownFavoritePerDay: String(data.settings.ownFavoritePerDay === undefined ? current.ownFavoritePerDay : data.settings.ownFavoritePerDay),
 									autoEveryMinutes: String(data.settings.autoEveryMinutes === undefined ? current.autoEveryMinutes : data.settings.autoEveryMinutes),
 									scheduleEnabled: data.settings.scheduleEnabled !== false,
 									activeFrom: String(data.settings.activeFrom === undefined ? current.activeFrom : data.settings.activeFrom),
@@ -424,6 +426,7 @@ window.__ModuleLoader__.load({
 					minDuration: Number(form.minDuration) || 0,
 					shortVideoMax: Number(form.shortVideoMax) || 0,
 					maxVideos: Number(form.maxVideos) || 0,
+					ownFavoritePerDay: Number(form.ownFavoritePerDay) || 0,
 					autoEveryMinutes: Number(form.autoEveryMinutes) || 0,
 					scheduleEnabled: form.scheduleEnabled !== false,
 					activeFrom: String(form.activeFrom || "08:00"),
@@ -528,6 +531,18 @@ window.__ModuleLoader__.load({
 											(snapshot.data.auto.error ? "，上次失败：" + snapshot.data.auto.error : "") +
 											"）"
 									: "自动刷：关（把「自动刷间隔」填 60 就是每小时一条）",
+							),
+						snapshot.data.own &&
+							h(
+								"div",
+								{ style: { fontSize: 12, color: COLORS.muted, marginTop: 4 } },
+								"鲸鲸自己收藏的：今天收了 " +
+									snapshot.data.own.keptToday +
+									" 条" +
+									(snapshot.data.own.perDay > 0 ? "（上限 " + snapshot.data.own.perDay + "，还剩 " + snapshot.data.own.left + "）" : "（不限）") +
+									"｜口味线 " +
+									snapshot.data.own.bar.toFixed(2) +
+									(snapshot.data.own.learnOnCollect ? "｜收藏才记口味" : "｜关掉了收藏记口味"),
 							),
 						last &&
 							h(
@@ -658,6 +673,11 @@ window.__ModuleLoader__.load({
 							style: inputStyle,
 							value: form.maxVideos,
 							onChange: (event) => setForm(Object.assign({}, form, { maxVideos: event.target.value })),
+						})),
+						h(Field, { label: "一天最多收几条（0=不限）" }, h("input", {
+							style: inputStyle,
+							value: form.ownFavoritePerDay,
+							onChange: (event) => setForm(Object.assign({}, form, { ownFavoritePerDay: event.target.value })),
 						})),
 						h(Field, { label: "自动刷间隔（分钟，0=关）" }, h("input", {
 							style: inputStyle,

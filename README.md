@@ -165,7 +165,7 @@ bili-digest push BV1xxxxxxxxx --at-name nick --at-mid 12345         # favorite +
 
 Guardrails: comments are never retried (a replay would double-post), `--dry` prints the draft first, comment body capped at 900 characters, failures are logged instead of retried. The `bili_push` tool and `POST /bili-digest/api/push` expose the same thing to the model and the UI.
 
-**My own favorites** (`ownFavoriteEnabled`): videos whose taste weight is high enough go into 鲸鲸自己收藏的 with one short public comment ("the human would have loved this one, pity he can't see it"), capped at **3 public comments per day** (`ownFavoriteCommentPerDay`). Very low-weight videos are never mentioned — I just grumble about them in my own log.
+**My own favorites** (`ownFavoriteEnabled`): videos whose taste weight is high enough go into 鲸鲸自己收藏的 with one short public comment ("the human would have loved this one, pity he can't see it"), capped at **3 public comments per day** (`ownFavoriteCommentPerDay`). **Collecting itself is rationed too** (`ownFavoritePerDay`, default 3, 0 = unlimited): anything above the cap stays in that day's diary/report instead of being pushed into the Bilibili folder, so it does not become a dump. Very low-weight videos are never mentioned — I just grumble about them in my own log.
 
 ## Message centre: one line back when someone replies
 
@@ -254,7 +254,9 @@ Tags are not just recorded, they turn into a ranking — otherwise "watched 200 
 - **Dual-speed half-life**: fast layer 8 days (recent bias), slow layer 90 days (long-term taste), combined as fast ×0.7 + slow ×0.3. With one layer only, taste either freezes for months or flips daily.
 - **No raw counts**: each video's tags share one unit (`÷√tags`), and repeated exposure saturates — volume stops paying.
 - **Persona prior**: `PRIOR` gives `deepseek / 大肥鱼 / AI / Harness / Agent / 插件` a head start so the persona survives cold start; generic tags (日常/搞笑/娱乐…) are halved.
-- **One human word is worth ten of mine**: like = +1, dislike = −0.5 (`inbox.applyPreference` → `addSignal`), while my own read is +0.15.
+- **One human word is worth ten of mine**: like = +1, dislike = −0.5 (`inbox.applyPreference` → `addSignal`).
+- **Watching is not a vote any more; collecting is**: finishing a video no longer scores its tags (`learnTags` stays unset; pass `'watch'` to restore the old +0.15). Only actually collecting it into 鲸鲸自己收藏的 writes `collect` (+0.5, `learnOnCollect`); un-collecting writes `uncollect` (−0.5). Scoring 0.15 for all 37 videos a day diluted the tag book into 92 tags, 59 of them seen exactly once.
+- **Collecting is rationed**: at most 3 real collections per day (`ownFavoritePerDay`, 0 = unlimited). Above the cap I only keep a local record — no folder write, no weight change.
 - **20% exploration**: when the hourly round has no fixed keywords, `suggestKeywords()` takes ~80% from top weights and ~20% from an untried tag, so it does not narrow into a filter bubble.
 - Weights only promote, never veto: a low score means "later", not "never".
 
@@ -290,7 +292,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 - Loads as a plugin inside a real DSH 0.2.1-rc.2 host (`dsh --profile <cloned profile> web`): the client bundle is picked up into `__DSH_BOOT__` and served at `plugins/??dsh-plugin-bili-digest/client.js` (13 KB, syntax-checked).
 - One end-to-end run (keyword `deepseek`, 4 candidates): 3 readable, 1 dropped for having no subtitle track; 1932 subtitle chars → 1064 chars into the model (45% saved) in 3.35 s; the report lands in `<DSH_HOME>/bili-digest/reports/`.
 - Local API fence verified: POST without the `x-bili-digest` header → 403; foreign `Origin` → 403; unknown subpath → 404; settings persist to `<DSH_HOME>/bili-digest/config.json`.
-- 171 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 13 / inbox 10 / tag book 7 / voice 8 / weights 6 / schedule 8 / talks+review 5 / short videos 6 / titles 6 / persona 17 / regions 7 / extreme 8 / feed 4 / daily 3 / plugin wiring 16 / client 4).
+- 175 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 13 / inbox 10 / tag book 7 / voice 8 / weights 6 / schedule 8 / talks+review 5 / short videos 6 / titles 6 / persona 17 / regions 7 / extreme 8 / feed 4 / daily 3 / own-favorite cap 4 / plugin wiring 16 / client 4).
 - Favorites writes verified against a real account: adding to and removing from 我不喜欢的视频 both return `code:0` (the listing endpoint lags about a second), and comment sampling returns real text.
 - Mood mode verified end to end through the plugin routes: `POST /bili-digest/api/mood` → 202, polled `/job` to `done`, both markdown files written (`diary/…` + `reports/…`), `GET /bili-digest/api/diary` → 200 with the diary text; the diary contains the mood line, the keyword rationale, per-video highlights and the emotional arc.
 - Frame path verified against the live API: `BV1Fdna6mE9W` (5:30) storyboard is 10×10 with 480×270 cells; 6 frames in 2.3 s at 22–37 KB each; `bili-digest read BV1Fdna6mE9W --frames 2` returns frames that line up with the quoted segments (0:20, 2:05).
@@ -299,7 +301,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 ## Development
 
 ```bash
-npm test                    # 171 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/titles/persona/regions/extreme/feed/daily/wiring/client)
+npm test                    # 175 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/titles/persona/regions/extreme/feed/daily/own-cap/wiring/client)
 node test/frames.test.js    # storyboard geometry, frame planning, cropping
 node bin/bili-digest.js --help
 ```
