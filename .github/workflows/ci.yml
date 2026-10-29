@@ -31,7 +31,7 @@ jobs:
           node test/tone.test.js
           node test/write.test.js
           node test/inbox.test.js && node test/tagbook.test.js
-          node test/voice.test.js && node test/weights.test.js && node test/schedule.test.js
+          node test/voice.test.js && node test/weights.test.js && node test/weights-cap.test.js && node test/schedule.test.js
           node test/talks.test.js
           node test/titles.test.js && node test/short.test.js && node test/feed.test.js && node test/daily.test.js
           node test/plugin.test.js
