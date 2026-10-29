@@ -12,6 +12,7 @@ lab/
 *.tgz
 .tmp-home/
 .tmp-mood/
+.tmp-own/
 diary/
 .home/
 

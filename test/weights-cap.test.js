@@ -16,7 +16,6 @@ test('常看的标签不会无限涨：写入时先衰减，且有上限', () =>
   for (let i = 0; i < 180; i += 1) {
     addSignal({
       tags: ['deepseek', 'harness', 'agent', '编程', 'AI'],
-      up: 'up-1',
       signal: 'like',
       now: day,
     });

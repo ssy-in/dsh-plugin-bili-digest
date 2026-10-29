@@ -227,7 +227,7 @@ The plugin has always had two roles. Their state is stored separately; neither o
 | Mood | `lib/core/persona.js`: weather, distance from home sea, time, quota | never guessed — only "comfortable or not" against your ranges |
 | Comfort ranges | **an orca from the East China Sea**: 0–15 °C, RH > 60 % helps, more cloud is better, light/moderate rain helps, UV ≤ 3, the further from home the worse | 18–32 °C, 45–75 % RH, UV ≤ 6, gusts ≤ 25, pressure ≥ 1005 |
 | Rhythm | naps of 10–20 min, 5–8 h a day; ~70 % of daytime spent eating plain rice, ~50 % at night | your own hours (up 08:00, asleep 01:30) |
-| Taste weights | `cache/weights.json` (what I watched + what I picked) | `cache/human-weights.json` (**only** from your like/dislike) |
+| Taste weights | `cache/weights.json` (**only** from videos I collected myself) | `cache/human-weights.json` (**only** from your like/dislike) |
 | Words | `lib/core/voice.js` packs, self-name rotates 困鲸鲸 / 困困鲸 / 鲸鲸 | `cache/human-said.jsonl`: your own words, verbatim, for review |
 | Folders | "鲸鲸自己收藏的" | "人类主人喜欢的视频" / "我不喜欢的视频" |
 
@@ -257,6 +257,7 @@ Tags are not just recorded, they turn into a ranking — otherwise "watched 200 
 - **One human word is worth ten of mine**: like = +1, dislike = −0.5 (`inbox.applyPreference` → `addSignal`).
 - **Watching is not a vote any more; collecting is**: finishing a video no longer scores its tags (`learnTags` stays unset; pass `'watch'` to restore the old +0.15). Only actually collecting it into 鲸鲸自己收藏的 writes `collect` (+0.5, `learnOnCollect`); un-collecting writes `uncollect` (−0.5). Scoring 0.15 for all 37 videos a day diluted the tag book into 92 tags, 59 of them seen exactly once.
 - **Collecting is rationed**: at most 3 real collections per day (`ownFavoritePerDay`, 0 = unlimited). Above the cap I only keep a local record — no folder write, no weight change.
+- **No per-uploader tally**: `weights.json` holds tags only. What I like is the *subject* (DeepSeek), not whoever happens to post about it — the same uploader switching topic gets judged afresh.
 - **20% exploration**: when the hourly round has no fixed keywords, `suggestKeywords()` takes ~80% from top weights and ~20% from an untried tag, so it does not narrow into a filter bubble.
 - Weights only promote, never veto: a low score means "later", not "never".
 

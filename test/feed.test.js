@@ -79,7 +79,6 @@ test('按口味取词：按权重抽样、大小写不重复；冷启动判断',
       显卡: { fast: 1, slow: 1, seen: 2, likes: 0, updatedAt: now.toISOString() },
       绝区零: { fast: 1, slow: 1, seen: 2, likes: 0, updatedAt: now.toISOString() },
     },
-    ups: {},
   };
   const seen = new Set();
   for (let i = 0; i < 40; i += 1) {
