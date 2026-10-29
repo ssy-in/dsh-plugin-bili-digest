@@ -262,6 +262,8 @@ Tags are not just recorded, they turn into a ranking — otherwise "watched 200 
 - **Collecting is rationed**: at most 3 real collections per day (`ownFavoritePerDay`, 0 = unlimited). Above the cap I only keep a local record — no folder write, no weight change.
 - **No per-uploader tally**: `weights.json` holds tags only. What I like is the *subject* (DeepSeek), not whoever happens to post about it — the same uploader switching topic gets judged afresh.
 - **20% exploration**: when the hourly round has no fixed keywords, `suggestKeywords()` takes ~80% from top weights and ~20% from an untried tag, so it does not narrow into a filter bubble.
+- **You can steer me directly**: @ me on a video saying "多看点这样的" ("show me more like this") and I add `nudge_up` (+0.6, spread over the 6–8 tags ≈ 0.22 each, saturating after three mentions) to my own table; "少看点这类" is `nudge_dn` (−0.5). Once per video per day, and it lands in that day's diary under "人类教我的".
+- **Two new subjects a week**: `explorePerWeek` (default 2) picks two subjects a week that are not yet in the weight table, from tags seen in the tag book plus Bilibili's trending words, and keeps them for the whole week. Video tags are preferred; trending words only fill gaps because most of them are one-off event phrases rather than a *subject*. Say "少看点这类" to press one back down.
 - Weights only promote, never veto: a low score means "later", not "never".
 
 ```bash
@@ -296,7 +298,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 - Loads as a plugin inside a real DSH 0.2.1-rc.2 host (`dsh --profile <cloned profile> web`): the client bundle is picked up into `__DSH_BOOT__` and served at `plugins/??dsh-plugin-bili-digest/client.js` (13 KB, syntax-checked).
 - One end-to-end run (keyword `deepseek`, 4 candidates): 3 readable, 1 dropped for having no subtitle track; 1932 subtitle chars → 1064 chars into the model (45% saved) in 3.35 s; the report lands in `<DSH_HOME>/bili-digest/reports/`.
 - Local API fence verified: POST without the `x-bili-digest` header → 403; foreign `Origin` → 403; unknown subpath → 404; settings persist to `<DSH_HOME>/bili-digest/config.json`.
-- 180 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 14 / inbox 14 / tag book 7 / voice 8 / weights 6 / schedule 8 / talks+review 5 / short videos 7 / titles 6 / persona 17 / regions 7 / extreme 8 / feed 4 / daily 3 / own-favorite cap 4 / plugin wiring 16 / client 4).
+- 193 offline tests pass (core 11 / frames 8 / mood 12 / values gate 7 / writes 14 / inbox 18 / tag book 8 / voice 8 / weights 6 / schedule 8 / talks+review 5 / short videos 7 / titles 6 / persona 17 / regions 7 / extreme 8 / feed 4 / daily 3 / own-favorite cap 4 / weekly exploration 8 / plugin wiring 16 / client 4).
 - Favorites writes verified against a real account: adding to and removing from 我不喜欢的视频 both return `code:0` (the listing endpoint lags about a second), and comment sampling returns real text.
 - Mood mode verified end to end through the plugin routes: `POST /bili-digest/api/mood` → 202, polled `/job` to `done`, both markdown files written (`diary/…` + `reports/…`), `GET /bili-digest/api/diary` → 200 with the diary text; the diary contains the mood line, the keyword rationale, per-video highlights and the emotional arc.
 - Frame path verified against the live API: `BV1Fdna6mE9W` (5:30) storyboard is 10×10 with 480×270 cells; 6 frames in 2.3 s at 22–37 KB each; `bili-digest read BV1Fdna6mE9W --frames 2` returns frames that line up with the quoted segments (0:20, 2:05).
@@ -305,7 +307,7 @@ bili-digest tags                 # the tag book, useful for eyeballing the weigh
 ## Development
 
 ```bash
-npm test                    # 180 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/titles/persona/regions/extreme/feed/daily/own-cap/wiring/client)
+npm test                    # 193 offline unit tests (merge/score/render/config/gate/frames/mood/diary/tone/write/inbox/tagbook/voice/weights/schedule/talks/short/titles/persona/regions/extreme/feed/daily/own-cap/explore/wiring/client)
 node test/frames.test.js    # storyboard geometry, frame planning, cropping
 node bin/bili-digest.js --help
 ```

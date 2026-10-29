@@ -308,6 +308,7 @@ window.__ModuleLoader__.load({
 				autoKeywords: "",
 				autoOrder: "pubdate",
 				autoDays: "7",
+				explorePerWeek: "2",
 				pushEnabled: false,
 				atName: "",
 				atMid: "",
@@ -351,6 +352,7 @@ window.__ModuleLoader__.load({
 									autoKeywords: String(data.settings.autoKeywords === undefined ? current.autoKeywords : data.settings.autoKeywords),
 									autoOrder: String(data.settings.autoOrder === undefined ? current.autoOrder : data.settings.autoOrder),
 									autoDays: String(data.settings.autoDays === undefined ? current.autoDays : data.settings.autoDays),
+									explorePerWeek: String(data.settings.explorePerWeek === undefined ? current.explorePerWeek : data.settings.explorePerWeek),
 									pushEnabled: data.settings.pushEnabled === true,
 			replyEnabled: data.settings.replyEnabled === true,
 									atName: String(data.settings.atName === undefined ? current.atName : data.settings.atName),
@@ -435,6 +437,7 @@ window.__ModuleLoader__.load({
 					autoKeywords: String(form.autoKeywords || ""),
 					autoOrder: String(form.autoOrder || "pubdate"),
 					autoDays: Number(form.autoDays) || 0,
+					explorePerWeek: Number(form.explorePerWeek) || 0,
 					pushEnabled: form.pushEnabled === true,
 		replyEnabled: form.replyEnabled === true,
 					atName: String(form.atName || ""),
@@ -543,6 +546,19 @@ window.__ModuleLoader__.load({
 									"｜口味线 " +
 									snapshot.data.own.bar.toFixed(2) +
 									(snapshot.data.own.learnOnCollect ? "｜收藏才记口味" : "｜关掉了收藏记口味"),
+							),
+						snapshot.data.tagBook &&
+							snapshot.data.tagBook.exploring &&
+							snapshot.data.tagBook.exploring.topics &&
+							snapshot.data.tagBook.exploring.topics.length > 0 &&
+							h(
+								"div",
+								{ style: { fontSize: 12, color: COLORS.muted, marginTop: 4 } },
+								"这周在试：" +
+									snapshot.data.tagBook.exploring.topics.join("、") +
+									"（" +
+									snapshot.data.tagBook.exploring.week +
+									"）｜不喜欢就在评论里说「少看点这类」",
 							),
 						last &&
 							h(
@@ -724,6 +740,11 @@ window.__ModuleLoader__.load({
 							style: inputStyle,
 							value: form.autoDays,
 							onChange: (event) => setForm(Object.assign({}, form, { autoDays: event.target.value })),
+						})),
+						h(Field, { label: "一周试几个没见过的题材（0=不试）" }, h("input", {
+							style: inputStyle,
+							value: form.explorePerWeek,
+							onChange: (event) => setForm(Object.assign({}, form, { explorePerWeek: event.target.value })),
 						})),
 						h(Field, { label: "看完 @ 谁（昵称）" }, h("input", {
 							style: inputStyle,

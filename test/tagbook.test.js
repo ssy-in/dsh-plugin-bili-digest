@@ -8,7 +8,7 @@ import test from 'node:test';
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-tags-'));
 process.env.BILI_DIGEST_HOME = HOME;
 
-const { addToTagBook, readTagBook, entriesFromSections, topTags, renderTagBook, syncTagBook, detectPreference } = await import(
+const { addToTagBook, readTagBook, entriesFromSections, topTags, renderTagBook, syncTagBook, detectPreference, detectNudge } = await import(
   '../lib/core/tagbook.js'
 );
 
@@ -81,4 +81,19 @@ test('detectPreference 只认明确表态', () => {
   assert.equal(detectPreference('刚刚回你了'), null);
   assert.equal(detectPreference(''), null);
   assert.equal(detectPreference(null), null);
+});
+
+test('detectNudge 认出「教口味」的话，且必须排在喜欢之前', () => {
+  assert.equal(detectNudge('多看点这样的'), 'nudge_up');
+  assert.equal(detectNudge('这种可以多来点'), 'nudge_up');
+  assert.equal(detectNudge('这条线加权重'), 'nudge_up');
+  assert.equal(detectNudge('少看点这类'), 'nudge_dn');
+  assert.equal(detectNudge('这种降点权重'), 'nudge_dn');
+  // 关键：这句话两边都命中，必须先当指令（否则会被当成人类自己喜欢，错收进他的收藏夹）。
+  assert.equal(detectPreference('多来点这种的'), 'like');
+  assert.equal(detectNudge('多来点这种的'), 'nudge_up');
+  // 不带指向词的话不算指令（「我喜欢」不是「我教你怎么调」）。
+  assert.equal(detectNudge('这个我喜欢'), null);
+  assert.equal(detectNudge(''), null);
+  assert.equal(detectNudge(null), null);
 });

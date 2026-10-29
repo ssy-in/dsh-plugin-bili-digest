@@ -8,7 +8,7 @@ import path from 'node:path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-inbox-'));
 process.env.BILI_DIGEST_HOME = home;
 
-const { normalize, quotaState, pickPending, buildReplyText, noteUnclear, readReview, LIMITS, recordReply, applyPreference } = await import('../lib/core/inbox.js');
+const { normalize, quotaState, pickPending, buildReplyText, noteUnclear, readReview, LIMITS, recordReply, applyPreference, applyNudge, replyIntent } = await import('../lib/core/inbox.js');
 const { readTagBook } = await import('../lib/core/tagbook.js');
 
 const ownerMid = '9134117';
@@ -173,7 +173,10 @@ test('人类说喜欢：记进标签库的 his 栏（没 csrf 时不碰收藏夹
 
 test('人类说喜欢：口味长在人类自己的表里，鲸鲸那张表一个字节都不动', async () => {
   const { readWeights, tagWeight } = await import('../lib/core/weights.js');
-  const whaleFile = path.join(home, 'bili-digest', 'cache', 'weights.json');
+  const { paths } = await import('../lib/core/store.js');
+  // 注意用 paths().cache（BILI_DIGEST_HOME 本身就是数据目录），别自己拼 bili-digest 子目录 ——
+  // 拼错的话这里写的是个没人读的文件，断言「没被动过」永远成立，测试等于空转。
+  const whaleFile = path.join(paths().cache, 'weights.json');
   fs.mkdirSync(path.dirname(whaleFile), { recursive: true });
   fs.writeFileSync(
     whaleFile,
@@ -249,4 +252,69 @@ test('人类说喜欢：「人类主人喜欢的视频」夹子被删了就退�
   assert.equal(result.favorite, 'ok');
   assert.equal(used, 3501772585, 'liked 缺失时应退到默认收藏夹');
   assert.equal(result.folder, '人类主人喜欢的视频', '文案里仍说人类喜欢的那个夹子');
+});
+
+test('人类教口味「多看点这样的」：只写鲸鲸表，不动他的收藏夹、不写他那张表', async () => {
+  const { readWeights, tagWeight } = await import('../lib/core/weights.js');
+  const { paths } = await import('../lib/core/store.js');
+  const whaleFile = path.join(paths().cache, 'weights.json');
+  const humanFile = path.join(paths().cache, 'human-weights.json');
+  const read = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '');
+  const whaleBefore = read(whaleFile);
+  const humanBefore = read(humanFile);
+  let dealCalled = false;
+  const result = await applyNudge(
+    { csrf: 'a'.repeat(32), atMid: ownerMid },
+    { bvid: 'BV1nn411c7nn', text: '多看点这样的' },
+    'nudge_up',
+    {
+      api: { view: async () => ({ aid: 46, title: '塔防教学', tags: ['塔防', '攻略', '单机'] }) },
+      deal: async () => {
+        dealCalled = true;
+        return { code: 0 };
+      },
+      now: new Date(),
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.kind, 'nudge_up');
+  assert.equal(dealCalled, false, '教口味不该碰收藏夹');
+  if (humanBefore) assert.equal(read(humanFile), humanBefore, '不该写人类表');
+  const whale = readWeights();
+  assert.ok(whale.tags['塔防'], '鲸鲸表里应该长出「塔防」');
+  // 一次点名 0.6 摊到 3 个标签再乘饱和因子 ≈ 0.17，已经高过 topTags 的 0.02 门槛 ⇒ 下一轮取词就轮到它。
+  const got = tagWeight('塔防', whale, new Date());
+  assert.ok(got > 0.15, `一次点名就该把题材顶起来，实际 ${got}`);
+  assert.ok(tagWeight('攻略', whale, new Date()) > 0.15, '同一批标签都该记上，不只记最重那个');
+  assert.ok(whaleBefore !== read(whaleFile));
+  // 标签库照旧记录（我自己认得的题材），但备注说的是「人类教我」。
+  const book = readTagBook();
+  const entry = book.mine.find((row) => row.bvid === 'BV1nn411c7nn');
+  assert.ok(entry, '应该进 mine 栏');
+  assert.equal(entry.note, '人类教我多看这种');
+});
+
+test('人类教口味：没拿到标签就老实说不记，别写空', async () => {
+  const result = await applyNudge(
+    { csrf: '', atMid: ownerMid },
+    { bvid: 'BV1pp411c7pp', text: '这种多来点' },
+    'nudge_up',
+    { api: { view: async () => ({ aid: 47, title: '没标签', tags: [] }), tags: async () => [] }, now: new Date() },
+  );
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason), /标签/);
+});
+
+test('人类教口味：没有 BV 就没法知道往哪偏', async () => {
+  const result = await applyNudge({ atMid: ownerMid }, { text: '多看点这种' }, 'nudge_up', { now: new Date() });
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason), /BV/);
+});
+
+test('replyIntent: 教口味排在喜欢之前（「多来点这种的」不当事他说喜欢）', () => {
+  assert.equal(replyIntent({ mid: ownerMid, text: '多来点这种的' }, { ownerMid }), 'nudge_up');
+  assert.equal(replyIntent({ mid: ownerMid, text: '少看点这类' }, { ownerMid }), 'nudge_dn');
+  assert.equal(replyIntent({ mid: ownerMid, text: '这个我喜欢' }, { ownerMid }), 'like');
+  assert.equal(replyIntent({ mid: ownerMid, text: '超级喜欢这个' }, { ownerMid }), 'like_strong');
+  assert.equal(replyIntent({ mid: '7777', text: '多看点这样的' }, { ownerMid }), 'guest');
 });
