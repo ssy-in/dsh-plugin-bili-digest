@@ -8,7 +8,7 @@ import path from 'node:path';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bili-write-'));
 process.env.BILI_DIGEST_HOME = home;
 
-const { roleForVideo, oneLine, buildComment, pushState, recordPush, pushPlan, markPushStart, maybeMarkPushStart, localDayStartIso, ownLedger, recordOwn, FOLDER_ROLES } = await import('../lib/core/write.js');
+const { roleForVideo, oneLine, buildComment, pushState, recordPush, pushPlan, markPushStart, maybeMarkPushStart, localDayStartIso, ownLedger, recordOwn, pickFolder, FOLDER_ROLES } = await import('../lib/core/write.js');
 const { validateCsrf } = await import('../lib/core/config.js');
 
 const section = {
@@ -163,6 +163,18 @@ test('ownLedger/recordOwn: 只给公开短评计数，收藏照收，跨日清�
   assert.equal(ledger.kept.length, 2);
   assert.equal(ownLedger(new Date('2026-10-25T09:00:00')).comments, 0);
   assert.deepEqual(FOLDER_ROLES.own.title, '鲸鲸自己收藏的');
+});
+
+test('pickFolder: 角色收藏夹被删了就退到默认收藏夹，别静默丢掉收藏动作', () => {
+  // 不传 'misc' 就不给它补一个假 id：这里只测 fallback 的行为
+  const folders = { misc: 3501772585, deepseek: 4345806085 };
+  // 正常命中
+  assert.deepEqual(pickFolder(folders, 'deepseek'), { role: 'deepseek', mediaId: 4345806085, fallback: false });
+  // 「我喜欢的视频」被人删了：落到默认收藏夹，并标出 fallback
+  assert.deepEqual(pickFolder(folders, 'mood'), { role: 'misc', mediaId: 3501772585, fallback: true });
+  // 两个都没有：不收藏，也不冒充 fallback
+  assert.deepEqual(pickFolder({}, 'own'), { role: 'own', mediaId: null, fallback: false });
+  assert.deepEqual(pickFolder({}, 'misc'), { role: 'misc', mediaId: null, fallback: false });
 });
 
 test('cleanup', () => {
